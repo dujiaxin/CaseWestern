@@ -76,6 +76,8 @@ def main():
                         help="The initial learning rate for SGD.")
     parser.add_argument("--momentum", default=0.9, type=float,
                         help="The initial learning rate for SGD.")
+    parser.add_argument("--trasformer_dir", default='./model/', type=str,
+                        help="The hugging face transformer cache directory.")
     # Load Parameters:
     args = parser.parse_args()
     if os.path.exists(args.output_dir) and os.listdir(
@@ -93,10 +95,10 @@ def main():
     with open(args.train_file, 'r') as f:
         trainloader = json.load(f)
     # Load pre-trained model tokenizer (vocabulary)
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', cache_dir=output_model_dir, do_lower_case=True,
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', cache_dir=args.trasformer_dir, do_lower_case=True,
                                               do_basic_tokenize=True)
     # Load pre-trained model (weights)
-    bertModel = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True)
+    bertModel = BertModel.from_pretrained('bert-base-uncased', cache_dir=args.trasformer_dir, output_hidden_states=True)
 
     # paragraph_encoder = torch.nn.gru()
     # document_encoder = torch.nn.GRU(768, 300)
@@ -110,6 +112,7 @@ def main():
     bertModel.eval()
     # If you have a GPU, put everything on cuda
     bertModel.to(args.device)
+    model.to(args.device)
     args.embed_dim = 768
     args.num_class = 1
     args.epoch = 4
@@ -127,19 +130,15 @@ def main():
                     # Convert token to vocabulary indices
                     indexed_tokens.append(tokenizer.convert_tokens_to_ids(tokenized_text))
                 # Convert inputs to PyTorch tensors
+                outputs = bertModel(indexed_tokens)
+                doc_embedding = torch.mean(outputs[2][-4:], (0, 1))
 
-                # padding the sentence so the tensors have same shape
-                padded = fill_sentence(indexed_tokens)
-                outputs = bertModel(padded)
-
-            # predicted_is_credible = document_encoder(outputs)
-            doc_embedding = torch.mean(outputs[0], (0, 1))
             predicted_is_credible = model(doc_embedding)
             # zero the parameter gradients
             # optimizer.zero_grad()
 
             # forward + backward + optimize
-            loss = criterion(predicted_is_credible, torch.tensor([1]).type(torch.FloatTensor))
+            loss = criterion(predicted_is_credible, torch.tensor(label).type(torch.FloatTensor))
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(),
             #                               max_grad_norm)  # Gradient clipping is not in AdamW anymore (so you can use amp without issue)

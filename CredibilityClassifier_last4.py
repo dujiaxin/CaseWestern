@@ -76,7 +76,7 @@ def main():
                         help="The initial learning rate for SGD.")
     parser.add_argument("--momentum", default=0.9, type=float,
                         help="The initial learning rate for SGD.")
-    parser.add_argument("--trasformer_dir", default='./model/', type=str,
+    parser.add_argument("--transformer_dir", default='./model/', type=str,
                         help="The hugging face transformer cache directory.")
     # Load Parameters:
     args = parser.parse_args()
@@ -85,20 +85,22 @@ def main():
         raise ValueError(
             "Output directory ({}) already exists and is not empty. Use --overwrite_output_dir to overcome.".format(
                 args.output_dir))
-
+    args.embed_dim = 768
+    args.num_class = 1
+    args.epoch = 4
     # Setup CUDA, GPU & distributed training
     args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # torch.distributed.init_process_group(backend='nccl')
-    # args.n_gpu = torch.cuda.device_count()
+    args.n_gpu = torch.cuda.device_count()
     set_seed(args)  # Added here for reproductibility (even between python 2 and 3)
     # Load the data
     with open(args.train_file, 'r') as f:
         trainloader = json.load(f)
     # Load pre-trained model tokenizer (vocabulary)
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', cache_dir=args.trasformer_dir, do_lower_case=True,
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', cache_dir=args.transformer_dir, do_lower_case=True,
                                               do_basic_tokenize=True)
     # Load pre-trained model (weights)
-    bertModel = BertModel.from_pretrained('bert-base-uncased', cache_dir=args.trasformer_dir, output_hidden_states=True)
+    bertModel = BertModel.from_pretrained('bert-base-uncased', cache_dir=args.transformer_dir, output_hidden_states=True)
 
     # paragraph_encoder = torch.nn.gru()
     # document_encoder = torch.nn.GRU(768, 300)
@@ -113,9 +115,6 @@ def main():
     # If you have a GPU, put everything on cuda
     bertModel.to(args.device)
     model.to(args.device)
-    args.embed_dim = 768
-    args.num_class = 1
-    args.epoch = 4
     logger.info("Training/evaluation parameters %s", args)
     for epoch in range(args.epoch):
         running_loss = 0.0
@@ -123,17 +122,18 @@ def main():
             # get the inputs; data is a list of [inputs, labels]
             inputs = data['document'].lower().split('.')
             label = data['is_credible']
+            sentence_embedding = torch.empty(768)
             with torch.no_grad():  # When embedding the sentence use BERT, we don't train the model.
-                indexed_tokens = []
                 for ii, sentence in enumerate(inputs, 1):
                     tokenized_text = tokenizer.tokenize(sentence)
                     # Convert token to vocabulary indices
-                    indexed_tokens.append(tokenizer.convert_tokens_to_ids(tokenized_text))
-                # Convert inputs to PyTorch tensors
-                outputs = bertModel(indexed_tokens)
-                doc_embedding = torch.mean(outputs[2][-4:], (0, 1))
+                    indexed_tokens = torch.tensor(tokenizer.convert_tokens_to_ids(tokenized_text))
+                    outputs = bertModel(indexed_tokens.to(args.device).unsqueeze(0))
+                    last4 = outputs[2][-4:]
+                    last4_mean = torch.mean(torch.stack(last4), 0)  # [number_of_tokens, 768]
+                    torch.stack(sentence_embedding, last4_mean)
 
-            predicted_is_credible = model(doc_embedding)
+            predicted_is_credible = model(torch.mean(sentence_embedding,0))
             # zero the parameter gradients
             # optimizer.zero_grad()
 

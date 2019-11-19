@@ -32,7 +32,7 @@ class Classifier(torch.nn.Module):
 
     def forward(self, status):
         classes = self.fc(status)
-        return self.fc(status)
+        return torch.sigmoid(classes)
 
 
 def set_seed(args):
@@ -45,7 +45,7 @@ def set_seed(args):
 
 def fill_sentence(tokenized_ids):
     seq_lengths = torch.LongTensor(list(map(len, tokenized_ids)))
-    seq_tensor = Variable(torch.zeros((len(tokenized_ids), 60))).long()
+    seq_tensor = Variable(torch.zeros((len(tokenized_ids), 300))).long()
     for idx, (seq, seqlen) in enumerate(zip(tokenized_ids, seq_lengths)):
         seq_tensor[idx, :seqlen] = torch.LongTensor(seq)
     return seq_tensor
@@ -76,6 +76,8 @@ def main():
                         help="The initial learning rate for SGD.")
     parser.add_argument("--momentum", default=0.9, type=float,
                         help="The initial learning rate for SGD.")
+    parser.add_argument("--transformer_dir", default='./model/', type=str,
+                        help="The hugging face transformer cache directory.")
     # Load Parameters:
     args = parser.parse_args()
     if os.path.exists(args.output_dir) and os.listdir(
@@ -83,20 +85,22 @@ def main():
         raise ValueError(
             "Output directory ({}) already exists and is not empty. Use --overwrite_output_dir to overcome.".format(
                 args.output_dir))
-
+    args.embed_dim = 768
+    args.num_class = 1
+    args.epoch = 4
     # Setup CUDA, GPU & distributed training
     args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # torch.distributed.init_process_group(backend='nccl')
-    # args.n_gpu = torch.cuda.device_count()
+    args.n_gpu = torch.cuda.device_count()
     set_seed(args)  # Added here for reproductibility (even between python 2 and 3)
     # Load the data
     with open(args.train_file, 'r') as f:
         trainloader = json.load(f)
     # Load pre-trained model tokenizer (vocabulary)
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', cache_dir=output_model_dir, do_lower_case=True,
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', cache_dir=args.transformer_dir, do_lower_case=True,
                                               do_basic_tokenize=True)
     # Load pre-trained model (weights)
-    bertModel = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True)
+    bertModel = BertModel.from_pretrained('bert-base-uncased', cache_dir=args.transformer_dir, output_hidden_states=True)
 
     # paragraph_encoder = torch.nn.gru()
     # document_encoder = torch.nn.GRU(768, 300)
@@ -110,9 +114,7 @@ def main():
     bertModel.eval()
     # If you have a GPU, put everything on cuda
     bertModel.to(args.device)
-    args.embed_dim = 768
-    args.num_class = 1
-    args.epoch = 4
+    model.to(args.device)
     logger.info("Training/evaluation parameters %s", args)
     for epoch in range(args.epoch):
         running_loss = 0.0
@@ -130,7 +132,7 @@ def main():
 
                 # padding the sentence so the tensors have same shape
                 padded = fill_sentence(indexed_tokens)
-                outputs = bertModel(padded)
+                outputs = bertModel(padded.to(args.device))
 
             # predicted_is_credible = document_encoder(outputs)
             doc_embedding = torch.mean(outputs[0], (0, 1))
@@ -139,7 +141,7 @@ def main():
             # optimizer.zero_grad()
 
             # forward + backward + optimize
-            loss = criterion(predicted_is_credible, torch.tensor([1]).type(torch.FloatTensor))
+            loss = criterion(predicted_is_credible.unsqueeze(0), torch.tensor(label).type(torch.FloatTensor).to(args.device))
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(),
             #                               max_grad_norm)  # Gradient clipping is not in AdamW anymore (so you can use amp without issue)

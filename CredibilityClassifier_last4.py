@@ -131,7 +131,7 @@ def main():
                     outputs = bertModel(indexed_tokens.to(args.device).unsqueeze(0))
                     last4 = outputs[2][-4:]
                     last4_mean = torch.mean(torch.stack(last4), 0)  # [number_of_tokens, 768]
-                    torch.stack(sentence_embedding, last4_mean)
+                    torch.stack((sentence_embedding, last4_mean),0)
 
             predicted_is_credible = model(torch.mean(sentence_embedding,0))
             # zero the parameter gradients
@@ -164,7 +164,6 @@ def main():
     # If we save using the predefined names, we can load using `from_pretrained`
     output_model_file = os.path.join(args.output_dir, WEIGHTS_NAME)
     torch.save(model_to_save.state_dict(), output_model_file)
-    model_to_save.config.to_json_file(os.path.join(args.output_dir, 'training_args.json'))
     print('Finished Training')
 
 

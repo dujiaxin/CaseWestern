@@ -122,7 +122,7 @@ def main():
             # get the inputs; data is a list of [inputs, labels]
             inputs = data['document'].lower().split('.')
             label = data['is_credible']
-            sentence_embedding = torch.empty(768)
+            sentence_embedding = torch.empty(768).to(args.device)
             with torch.no_grad():  # When embedding the sentence use BERT, we don't train the model.
                 for ii, sentence in enumerate(inputs, 1):
                     tokenized_text = tokenizer.tokenize(sentence)
@@ -138,7 +138,8 @@ def main():
             # optimizer.zero_grad()
 
             # forward + backward + optimize
-            loss = criterion(predicted_is_credible, torch.tensor(label).type(torch.FloatTensor))
+            loss = criterion(predicted_is_credible.unsqueeze(0),
+                             torch.tensor(label).type(torch.FloatTensor).to(args.device))
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(),
             #                               max_grad_norm)  # Gradient clipping is not in AdamW anymore (so you can use amp without issue)
@@ -152,19 +153,19 @@ def main():
                       (epoch + 1, i + 1, running_loss / 2000))
                 running_loss = 0.0
 
-    # Step 1: Save a model, configuration and vocabulary that you have fine-tuned
-    if not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir)
-    # If we have a distributed model, save only the encapsulated model
-    # (it was wrapped in PyTorch DistributedDataParallel or DataParallel)
-    logger.info("Saving model checkpoint to %s", args.output_dir)
-    model_to_save = model.module if hasattr(model, 'module') else model
-    # Good practice: save your training arguments together with the trained model
-    torch.save(args, os.path.join(args.output_dir, 'training_args.bin'))
-    # If we save using the predefined names, we can load using `from_pretrained`
-    output_model_file = os.path.join(args.output_dir, WEIGHTS_NAME)
-    torch.save(model_to_save.state_dict(), output_model_file)
-    print('Finished Training')
+            # Step 1: Save a model, configuration and vocabulary that you have fine-tuned
+        if not os.path.exists(args.output_dir):
+            os.makedirs(args.output_dir)
+            # If we have a distributed model, save only the encapsulated model
+            # (it was wrapped in PyTorch DistributedDataParallel or DataParallel)
+        logger.info("Saving model checkpoint to %s", args.output_dir)
+        model_to_save = model.module if hasattr(model, 'module') else model
+        # Good practice: save your training arguments together with the trained model
+        torch.save(args, os.path.join(args.output_dir, 'training_args.bin'))
+        # If we save using the predefined names, we can load using `from_pretrained`
+        output_model_file = os.path.join(args.output_dir, WEIGHTS_NAME)
+        torch.save(model_to_save.state_dict(), output_model_file)
+        print('Finished Training')
 
 
 if __name__ == '__main__':

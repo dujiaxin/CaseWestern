@@ -416,4 +416,8 @@ except:
 """initial network"""
 net = Network([1024, 512, 256, 128, 64, 32, 16, 8, 4, 2])
 
-net.SGD(training_collection, 30, 4, 0.1, test_data=test_collection)
+epoch = 30
+batch_size = 4
+learning_rate = 0.00001
+
+net.SGD(training_collection, epoch, batch_size, learning_rate, test_data=test_collection)

@@ -7,7 +7,10 @@ class Docx2json():
     original_documents = []  # For storing the documents with titles and rms
     issue_documents = []  # For storing the not credible documents
     para_delimiter = '\n\n'
-    count = 0
+    count_rms = 0
+    count_matter = 0
+    rms_not_here = []
+    rms_here = []
 
     def __init__(self):
         self.filePath = '../content/auto_2/'
@@ -18,13 +21,14 @@ class Docx2json():
 
     def check_rms(self,rms):
         if rms in self.rms_notcredible:
-            self.count = self.count+1
+            self.count_rms = self.count_rms+1
+            self.rms_here.append(rms)
         return rms in self.rms_notcredible
 
     def check_matter(self,matter):
         if int(matter) in self.matter_notcredible:
-            self.count = self.count+1
-        return matter in self.matter_notcredible
+            self.count_matter = self.count_matter+1
+        return int(matter) in self.matter_notcredible
 
     def readDocx(self, filePath):
         file = docx.Document(filePath)
@@ -36,9 +40,9 @@ class Docx2json():
     def docs2json(self):
         for file in os.listdir(self.filePath):  # Iterate over the files
             contents = self.readDocx(self.filePath + file)  # Load file contents
-            ids = file.replace('.docx' , '')
-            mater_id = ids[1:8]
-            rms = ids.lower().split('rms')[1]
+            ids = file.replace('.docx' , '').split('_')
+            mater_id = ids[0].replace('-', '')
+            rms = ids[1]
             if self.check_matter(mater_id):
                 issue_doc = {"mater_id": mater_id, "rms": rms, "credible_issue": self.check_rms(rms), "document": contents}
                 self.issue_documents.append(issue_doc)
@@ -53,4 +57,11 @@ class Docx2json():
 if __name__ == '__main__':
     a = Docx2json()
     a.docs2json()
-    print(a.count)
+    print(a.count_matter)
+    print(a.count_rms)
+    list = []
+    for i in a.rms_notcredible:
+        if i not in a.rms_here:
+            list.append(i)
+    print('\n'.join(list))
+

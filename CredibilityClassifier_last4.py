@@ -106,7 +106,8 @@ def main():
     # document_encoder = torch.nn.GRU(768, 300)
     model = Classifier(args)
     # Loss function
-    criterion = torch.nn.BCELoss()  # Optimizer
+    criterion = torch.nn.BCEWithLogitsLoss()
+    # Optimizer
     optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum)
 
     # Set the model in evaluation mode to deactivate the DropOut modules
@@ -121,7 +122,11 @@ def main():
         for i, data in enumerate(trainloader, 0):
             # get the inputs; data is a list of [inputs, labels]
             inputs = data['document'].lower().split('.')
-            label = data['is_credible']
+            credible_issue = data['credible_issue']
+            if credible_issue:
+                label = 1
+            else:
+                label = 0
             sentence_embedding = torch.empty(768).to(args.device)
             with torch.no_grad():  # When embedding the sentence use BERT, we don't train the model.
                 for ii, sentence in enumerate(inputs, 1):

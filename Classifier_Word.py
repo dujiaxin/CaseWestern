@@ -7,6 +7,8 @@ import mxnet as mx
 import gluonnlp as nlp
 import random
 from sklearn import svm
+from pprint import pprint
+
 
 if __name__ == '__main__':
     random.seed(1)
@@ -18,17 +20,26 @@ if __name__ == '__main__':
     word_embeddings = mx.ndarray.empty((300,))
     labels = []
     docs = []
-    with open('./data/input.json', 'r') as f:
+    docs_eval = []
+    with open('./data/docs.json', 'r') as f:
         trainloader = json.load(f)
-        for i, items in enumerate(tqdm(trainloader[:10])):
-            doc = []
+        for i, items in enumerate(tqdm(trainloader)):
             tokens = nltk.word_tokenize(items['document'].lower())
             for ii, word in enumerate(tokens, 10):
                 word_embeddings = mx.ndarray.concat(word_embeddings, glove[word], dim=0)
-            doc_mean = word_embeddings.reshape(len(tokens), 300).mean(axis=0)
-            docs.append(doc_mean.asnumpy())
-            labels.append(items['is_credible'])
+            doc_max = word_embeddings.reshape(len(tokens), 300).max(axis=0)
+            docs.append(np.nan_to_num(doc_max.asnumpy()))
+            if items['credible_issue']:
+                labels.append(1.0)
+            else:
+                labels.append(0.0)
     clf = svm.SVC()
+    pprint(docs)
+    print('labels')
+    pprint(labels)
     clf.fit(docs, labels)
-    dump(clf, './model/svm_glove_word_mean.joblib')
-    print(clf.predict(docs[0]))
+    dump(clf, './model/svm_glove_word_max.joblib')
+    print('predict')
+    clf.predict(docs, labels)
+
+

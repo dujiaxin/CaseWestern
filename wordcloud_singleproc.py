@@ -10,6 +10,7 @@ from nltk.corpus import stopwords
 from gensim.corpora import Dictionary
 from gensim.models import TfidfModel
 from wordcloud import WordCloud
+# built on python-docx so it should be similar in performance or better than anything I can program myself
 import docx2txt as d2t
 from natsort import natsorted
 
@@ -48,7 +49,10 @@ blacklist_words = [
     'leads////',
     'leads/////',
     'leads//////',
-    'leads//////no'
+    'leads//////no',
+    "''",
+    '``',
+    "'s"
 ]
 stopwords = stopwords.words('english') + blacklist_words + [punc for punc in string.punctuation]
 # stemmer for reducing words
@@ -64,6 +68,10 @@ if not os.path.exists(root_cleaned_filepath):
 i = 0
 # download nltk package for pos_tagger
 nltk.download('averaged_perceptron_tagger')
+# empty file to prepare to append
+open('word_freq.csv', 'w', encoding='utf-8').close()
+# frequency dictionary for words
+freq_dict = {}
 for root, dirs, files in os.walk(text_filepath, topdown=True):
     # skip any loops that doesn't result in a folder of files
     if not files:
@@ -95,14 +103,33 @@ for root, dirs, files in os.walk(text_filepath, topdown=True):
             try:
                 if hasNumbers(tokens[j]):
                     tokens.pop(j)
+                    continue
                 if tokens[j] in stopwords:
                     tokens.pop(j)
+                    continue
                 if flag == 'noun':
                     if pos[j][1][0] == 'N':
+                        if tokens[j] not in freq_dict.keys():
+                            freq_dict[tokens[j]] = 1
+                        else:
+                            freq_dict[tokens[j]] += 1
+                    else:
                         tokens.pop(j)
+                        continue
                 elif flag == 'verb':
                     if pos[j][1][0] == 'R' or pos[j][1][0] == 'V':
+                        if tokens[j] not in freq_dict.keys():
+                            freq_dict[tokens[j]] = 1
+                        else:
+                            freq_dict[tokens[j]] += 1
+                    else:
                         tokens.pop(j)
+                        continue
+                else:
+                    if tokens[j] not in freq_dict.keys():
+                        freq_dict[tokens[j]] = 1
+                    else:
+                        freq_dict[tokens[j]] += 1
             except IndexError as e:
                 pass
                 #print('Token list length: ' + str(len(tokens)))
@@ -120,6 +147,12 @@ for root, dirs, files in os.walk(text_filepath, topdown=True):
             break
     if i >= 10:
         break
+dic_keys = list(freq_dict.keys())
+postokens = nltk.pos_tag(dic_keys)
+with open('word_freq.csv', 'a+', encoding='utf-8') as freq_stat:
+    for k in range(len(dic_keys) - 1):
+        strtopend = dic_keys[k] + ',' + str(freq_dict[dic_keys[k]]) + ',' + postokens[k + 1][1] + '\n'
+        freq_stat.write(strtopend)
 # build dictionary
 dictionary = Dictionary(stemmed_corpus)
 # get the actual form of each stemmed word

@@ -13,6 +13,7 @@ from gensim.models import TfidfModel
 from wordcloud import WordCloud
 import docx2txt as d2t
 from natsort import natsorted
+from diskcache import Cache
 
 def get_common_surface_form(original_corpus, stemmer):
     counts = defaultdict(lambda: defaultdict(int))
@@ -32,7 +33,6 @@ def hasNumbers(inp):
 def processFiles(filels):
     tot = len(filels)
     print(multiprocessing.current_process().name + ' now processing files')
-    global q
     global custom_stopwords
     stemmed_corp = []
     original_corp = []
@@ -97,7 +97,7 @@ process_list = []
 q = multiprocessing.Queue()
 # testing
 # -1 for all files
-filesToIter = 10
+filesToIter = 2
 # -1 for all dirs
 dirsToIter = -1
 currDir = 0
@@ -144,13 +144,15 @@ if __name__ == '__main__':
         process_list.append(p)
         p.start()
     print('master process waiting...')
+    print(str(len(process_list)))
     for proc in process_list:
-        proc.join()
-    print('all processes joined to master, emptying queue...')
-    while not q.empty():
-        res = q.get()
-        stemmed_corpus.append(res[0])
-        original_corpus.append(res[1])
+        while not q.empty():
+            print('emptying queue')
+            res = q.get()
+            stemmed_corpus.append(res[0])
+            original_corpus.append(res[1])
+        print('loop' + proc.name)
+        proc.join(10)
     print('emptied queue, building frequency dictionary...')
     # build dictionary
     dictionary = Dictionary(stemmed_corpus)

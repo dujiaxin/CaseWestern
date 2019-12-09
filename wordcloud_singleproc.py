@@ -3,6 +3,7 @@ import os
 import csv
 import string
 from collections import defaultdict
+import nltk
 from nltk.tokenize import word_tokenize
 from nltk.stem.porter import PorterStemmer
 from nltk.corpus import stopwords
@@ -11,6 +12,10 @@ from gensim.models import TfidfModel
 from wordcloud import WordCloud
 import docx2txt as d2t
 from natsort import natsorted
+
+# Takes command line arguments of three types: none, verb, or noun
+# These are used to define which types of words get shown in the wordcloud while it is being created
+flag = sys.argv[1]
 
 def get_common_surface_form(original_corpus, stemmer):
     counts = defaultdict(lambda: defaultdict(int))
@@ -25,7 +30,11 @@ def get_common_surface_form(original_corpus, stemmer):
     return surface_forms
 
 def hasNumbers(inp):
-    return any(char.isdigit() for char in inp)
+    for char in inp:
+        if char.isdigit():
+            return True
+    return False
+    #return any(char.isdigit() for char in inp)
 
 text_filepath = 'C:/Users/Matt/Documents/Data Science/CW/CLEANED_3/'
 root_cleaned_filepath = 'C:/Users/Matt/Documents/Data Science/CW/WORDCLOUD_3/'
@@ -53,6 +62,8 @@ if not os.path.exists(root_cleaned_filepath):
     os.makedirs(root_cleaned_filepath)
 # testing purposes:
 i = 0
+# download nltk package for pos_tagger
+nltk.download('averaged_perceptron_tagger')
 for root, dirs, files in os.walk(text_filepath, topdown=True):
     # skip any loops that doesn't result in a folder of files
     if not files:
@@ -77,6 +88,7 @@ for root, dirs, files in os.walk(text_filepath, topdown=True):
         text = text.lower()
         # extract tokens from text
         tokens = word_tokenize(text)
+        pos = nltk.pos_tag(tokens)
         # remove any strings containing numbers from the text
         for j in range(len(tokens) - 1):
             # encoding or windows end line characters result in len(tokens) returning relatively arbitrary values
@@ -85,6 +97,12 @@ for root, dirs, files in os.walk(text_filepath, topdown=True):
                     tokens.pop(j)
                 if tokens[j] in stopwords:
                     tokens.pop(j)
+                if flag == 'noun':
+                    if pos[j][1][0] == 'N':
+                        tokens.pop(j)
+                elif flag == 'verb':
+                    if pos[j][1][0] == 'R' or pos[j][1][0] == 'V':
+                        tokens.pop(j)
             except IndexError as e:
                 pass
                 #print('Token list length: ' + str(len(tokens)))

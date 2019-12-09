@@ -40,6 +40,7 @@ if __name__ == '__main__':
     clf.fit(docs, labels)
     dump(clf, './model/svm_glove_word_max.joblib')
     print('predict')
-    clf.predict(docs, labels)
+    results = clf.predict(docs)
+    pprint(results)
 
 

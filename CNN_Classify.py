@@ -1,19 +1,15 @@
 import torch
 import torchtext.vocab as vocab
 from tqdm import tqdm
-import numpy as np
 import json
 import nltk
-import random
 import argparse
-import torch
 from torch.autograd import Variable
 import os
-import json
 import random
 import numpy as np
-
-
+import datetime
+import torch.nn.functional as F
 
 def set_seed(args):
     random.seed(args.seed)
@@ -42,19 +38,53 @@ def print_tuples(tuples):
 
 class Classifier(torch.nn.Module):
     def __init__(self, args):
-        super().__init__()
-        self.fc = torch.nn.Linear(args.embed_dim, args.num_class)
+        super(Classifier, self).__init__()
+        self.args = args
+        D = 300  # word embedding dimentions
+        C = 1
+        Ci = 1
+        Co = 100  # number of each kind of kernel
+        Ks = [3,4,5]  # 'comma-separated kernel size to use for convolution'
+
+        # self.convs1 = [nn.Conv2d(Ci, Co, (K, D)) for K in Ks]
+        self.convs1 = torch.nn.ModuleList([torch.nn.Conv2d(Ci, Co, (K, D)) for K in Ks])
+        '''
+        self.conv13 = nn.Conv2d(Ci, Co, (3, D))
+        self.conv14 = nn.Conv2d(Ci, Co, (4, D))
+        self.conv15 = nn.Conv2d(Ci, Co, (5, D))
+        '''
+        self.dropout = torch.nn.Dropout(args.dropout)
+        self.fc1 = torch.nn.Linear(len(Ks) * Co, C)
         self.init_weights()
 
     def init_weights(self):
         initrange = 0.5
-        self.fc.weight.data.uniform_(-initrange, initrange)
-        self.fc.bias.data.zero_()
+        self.fc1.weight.data.uniform_(-initrange, initrange)
+        self.fc1.bias.data.zero_()
 
-    def forward(self, status):
-        classes = self.fc(status)
-        return self.fc(status)
+    def conv_and_pool(self, x, conv):
+        x = F.relu(conv(x)).squeeze(3)  # (N, Co, W)
+        x = F.max_pool1d(x, x.size(2)).squeeze(2)
+        return x
 
+    def forward(self, x):
+        x = x.unsqueeze(1)  # (N, Ci, W, D)
+        print(x.size)
+        x = [F.relu(conv(x)).squeeze(3) for conv in self.convs1]  # [(N, Co, W), ...]*len(Ks)
+        print(x.size)
+        x = [F.max_pool1d(i, i.size(2)).squeeze(2) for i in x]  # [(N, Co), ...]*len(Ks)
+        print(x.size)
+        x = torch.cat(x, 1)
+        print(x.size)
+        '''
+        x1 = self.conv_and_pool(x,self.conv13) #(N,Co)
+        x2 = self.conv_and_pool(x,self.conv14) #(N,Co)
+        x3 = self.conv_and_pool(x,self.conv15) #(N,Co)
+        x = torch.cat((x1, x2, x3), 1) # (N,len(Ks)*Co)
+        '''
+        x = self.dropout(x)  # (N, len(Ks)*Co)
+        logit = self.fc1(x)  # (N, C)
+        return logit
 
 # train the credibility classifier model
 def main():
@@ -77,6 +107,8 @@ def main():
                         help="The initial learning rate for SGD.")
     parser.add_argument("--momentum", default=0.9, type=float,
                         help="The initial learning rate for SGD.")
+    parser.add_argument("--dropout", default=0.5, type=float,
+                        help="The drop out ratio in CNN.")
 
     # Load Parameters:
     args = parser.parse_args()
@@ -110,9 +142,14 @@ def main():
             trainloader = json.load(f)
             for i, items in enumerate(tqdm(trainloader)):
                 tokens = nltk.word_tokenize(items['document'].lower())
-                word_embeddings = torch.empty(300).to(args.device)
+                word_embeddings = torch.empty(300).to(args.device).unsqueeze(0)
                 for ii, word in enumerate(tokens, 10):
-                    word_embeddings = torch.concat(word_embeddings, get_word(glove, word), dim=0)
+                    try:
+                        word_embedding = get_word(glove, word).to(args.device).unsqueeze(0)
+                        print(word_embeddings.size())
+                        word_embeddings = torch.cat((word_embeddings, word_embedding), 0)
+                    except KeyError:
+                        continue
                 predicted_is_credible = model(word_embeddings)
                 if items['credible_issue']:
                     label = torch.tensor(1).type(torch.FloatTensor).to(args.device)
@@ -123,8 +160,7 @@ def main():
             # optimizer.zero_grad()
 
             # forward + backward + optimize
-            loss = criterion(predicted_is_credible.unsqueeze(0),
-                             torch.tensor(label).type(torch.FloatTensor).to(args.device))
+            loss = criterion(predicted_is_credible.unsqueeze(0),label)
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(),
             #                               max_grad_norm)  # Gradient clipping is not in AdamW anymore (so you can use amp without issue)
@@ -143,16 +179,15 @@ def main():
             os.makedirs(args.output_dir)
             # If we have a distributed model, save only the encapsulated model
             # (it was wrapped in PyTorch DistributedDataParallel or DataParallel)
-        logger.info("Saving model checkpoint to %s", args.output_dir)
         model_to_save = model.module if hasattr(model, 'module') else model
         # Good practice: save your training arguments together with the trained model
         torch.save(args, os.path.join(args.output_dir, 'training_args.bin'))
         # If we save using the predefined names, we can load using `from_pretrained`
-        output_model_file = os.path.join(args.output_dir, WEIGHTS_NAME)
+        output_model_file = os.path.join(args.output_dir + datetime.datetime.now().strftime("%s"))
         torch.save(model_to_save.state_dict(), output_model_file)
         print('Finished Training')
 
 
 if __name__ == '__main__':
     main()
-    print_tuples(closest(get_word('google')))
+    #print_tuples(closest(get_word('google')))

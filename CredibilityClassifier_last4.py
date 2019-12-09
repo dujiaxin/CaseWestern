@@ -87,7 +87,7 @@ def main():
                 args.output_dir))
     args.embed_dim = 768
     args.num_class = 1
-    args.epoch = 4
+    args.epoch = 1
     # Setup CUDA, GPU & distributed training
     args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # torch.distributed.init_process_group(backend='nccl')

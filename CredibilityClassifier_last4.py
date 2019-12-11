@@ -1,6 +1,7 @@
 import argparse
 import torch
 from torch.autograd import Variable
+import torch.utils.data as Data
 from transformers import *
 from transformers import BertTokenizer, BertModel, WEIGHTS_NAME, CONFIG_NAME
 import os
@@ -34,6 +35,15 @@ class Classifier(torch.nn.Module):
         classes = self.fc(status)
         return self.fc(status)
 
+class CWData(Data.Dataset):
+    def __init__(self, data):
+        self.data = data
+
+    def __getitem__(self, index):
+        return self.data[index]
+
+    def __len__(self):
+        return len(self.data)
 
 def set_seed(args):
     random.seed(args.seed)
@@ -54,6 +64,20 @@ def fill_sentence(tokenized_ids):
 def evaluate():
     pass
 
+def read_data(filepath, epoch = 4):
+    # print("read data")
+    loader = None
+    with open(filepath, 'r') as f:
+        train_data = json.load(f)
+        batch_size = int((len(train_data) / epoch)) + 1
+        train_data = CWData(train_data)
+        loader = Data.DataLoader(
+            dataset=train_data,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=2, # number of process
+        )
+    return loader
 
 # train the credibility classifier model
 def main():
@@ -94,8 +118,10 @@ def main():
     args.n_gpu = torch.cuda.device_count()
     set_seed(args)  # Added here for reproductibility (even between python 2 and 3)
     # Load the data
-    with open(args.train_file, 'r') as f:
-        trainloader = json.load(f)
+    # with open(args.train_file, 'r') as f:
+    #     trainloader = json.load(f)
+    trainloader = read_data(args.train_file, args.epoch)
+
     # Load pre-trained model tokenizer (vocabulary)
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', cache_dir=args.transformer_dir, do_lower_case=True,
                                               do_basic_tokenize=True)
@@ -121,9 +147,8 @@ def main():
         running_loss = 0.0
         for i, data in enumerate(trainloader, 0):
             # get the inputs; data is a list of [inputs, labels]
-            inputs = data['document'].lower().split('.')
-            credible_issue = data['credible_issue']
-            if credible_issue:
+            inputs = data['document'][i].lower().split('.')
+            if data['credible_issue'][i]:
                 label = 1
             else:
                 label = 0

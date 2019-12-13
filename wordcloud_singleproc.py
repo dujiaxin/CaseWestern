@@ -14,10 +14,11 @@ from wordcloud import WordCloud
 import docx2txt as d2t
 from natsort import natsorted
 from tqdm import tqdm
-
+from nltk import ngrams
 # Takes command line arguments of three types: none, verb, or noun
 # These are used to define which types of words get shown in the wordcloud while it is being created
 flag = sys.argv[1]
+
 
 def get_common_surface_form(original_corpus, stemmer):
     counts = defaultdict(lambda: defaultdict(int))
@@ -31,12 +32,18 @@ def get_common_surface_form(original_corpus, stemmer):
                                      key=lambda i: originals[i])
     return surface_forms
 
+
 def hasNumbers(inp):
     for char in inp:
         if char.isdigit():
             return True
     return False
     #return any(char.isdigit() for char in inp)
+
+
+def get_ngrams(text, n):
+    n_grams = ngrams(word_tokenize(text), n)
+    return [' '.join(grams) for grams in n_grams]
 
 text_filepath = './content/cleaned/'
 root_cleaned_filepath = './'
@@ -97,6 +104,7 @@ for root, dirs, files in os.walk(text_filepath, topdown=True):
         text = text.lower()
         # extract tokens from text
         tokens = word_tokenize(text)
+        twograms = get_ngrams(text, 2)
         pos = nltk.pos_tag(tokens)
         # remove any strings containing numbers from the text
         for j in range(len(tokens) - 1):
@@ -127,32 +135,32 @@ for root, dirs, files in os.walk(text_filepath, topdown=True):
                         tokens.pop(j)
                         continue
                 else:
-                    if tokens[j] not in freq_dict.keys():
-                        freq_dict[tokens[j]] = 1
+                    if twograms[j] not in freq_dict.keys():
+                        freq_dict[twograms[j]] = 1
                     else:
-                        freq_dict[tokens[j]] += 1
+                        freq_dict[twograms[j]] += 1
             except IndexError as e:
                 pass
                 #print('Token list length: ' + str(len(tokens)))
                 #print('Actual length: ' + str(j - 1))
-        # stem tokens
-        stemmed = [stemmer.stem(token) for token in tokens]
-        # store stemmed text
-        stemmed_corpus.append(stemmed)
-        # store original text
-        original_corpus.append(tokens)
-        # clear memory
-        del text
-        del tokens
-        if i >= 10:
-            break
-    if i >= 10:
-        break
+    #     # stem tokens
+    #     stemmed = [stemmer.stem(token) for token in tokens]
+    #     # store stemmed text
+    #     stemmed_corpus.append(stemmed)
+    #     # store original text
+    #     original_corpus.append(tokens)
+    #     # clear memory
+    #     del text
+    #     del tokens
+    #     if i >= 10:
+    #         break
+    # if i >= 10:
+    #     break
 dic_keys = list(freq_dict.keys())
-postokens = nltk.pos_tag(dic_keys)
+#postokens = nltk.pos_tag(dic_keys)
 with open('word_freq.csv', 'a+', encoding='utf-8') as freq_stat:
     for k in range(len(dic_keys) - 1):
-        strtopend = dic_keys[k] + ',' + str(freq_dict[dic_keys[k]]) + ',' + postokens[k + 1][1] + '\n'
+        strtopend = dic_keys[k] + ',' + str(freq_dict[dic_keys[k]]) + '\n'
         freq_stat.write(strtopend)
 # build dictionary
 dictionary = Dictionary(stemmed_corpus)

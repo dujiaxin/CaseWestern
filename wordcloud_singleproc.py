@@ -13,6 +13,7 @@ from wordcloud import WordCloud
 # built on python-docx so it should be similar in performance or better than anything I can program myself
 import docx2txt as d2t
 from natsort import natsorted
+from tqdm import tqdm
 
 # Takes command line arguments of three types: none, verb, or noun
 # These are used to define which types of words get shown in the wordcloud while it is being created
@@ -37,8 +38,8 @@ def hasNumbers(inp):
     return False
     #return any(char.isdigit() for char in inp)
 
-text_filepath = 'C:/Users/Matt/Documents/Data Science/CW/CLEANED_3/'
-root_cleaned_filepath = 'C:/Users/Matt/Documents/Data Science/CW/WORDCLOUD_3/'
+text_filepath = './content/cleaned/'
+root_cleaned_filepath = './'
 blacklist = [
     'document_process.csv'
 ]
@@ -87,7 +88,7 @@ for root, dirs, files in os.walk(text_filepath, topdown=True):
     if not os.path.exists(cleaned_filepath):
         os.makedirs(cleaned_filepath)
     # iterating over files int this dir
-    for filename in files:
+    for filename in tqdm(files):
         if filename in blacklist:
             continue
         file = root + '/' + filename

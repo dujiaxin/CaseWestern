@@ -14,7 +14,7 @@ from wordcloud import WordCloud
 import docx2txt as d2t
 from natsort import natsorted
 from tqdm import tqdm
-
+from nltk.stem import WordNetLemmatizer
 # Takes command line arguments of three types: none, verb, or noun
 # These are used to define which types of words get shown in the wordcloud while it is being created
 flag = sys.argv[1]
@@ -62,14 +62,18 @@ stemmer = PorterStemmer()
 stemmed_corpus = []
 # storing non-stemmed tokens
 original_corpus = []
+# add lemmatizer
+# nltk.download('wordnet')
+lemmatizer = WordNetLemmatizer()
 # make resulting directory if it does not already exist
 if not os.path.exists(root_cleaned_filepath):
     os.makedirs(root_cleaned_filepath)
 # testing purposes:
 i = 0
 # download nltk package for pos_tagger
-nltk.download('averaged_perceptron_tagger')
+# nltk.download('averaged_perceptron_tagger')
 # empty file to prepare to append
+# TODO: is this a good practice? -Jiaxin
 open('word_freq.csv', 'w', encoding='utf-8').close()
 # frequency dictionary for words
 freq_dict = {}
@@ -127,10 +131,11 @@ for root, dirs, files in os.walk(text_filepath, topdown=True):
                         tokens.pop(j)
                         continue
                 else:
-                    if tokens[j] not in freq_dict.keys():
-                        freq_dict[tokens[j]] = 1
+                    lemma = lemmatizer.lemmatize(tokens[j])
+                    if lemma not in freq_dict.keys():
+                        freq_dict[lemma] = 1
                     else:
-                        freq_dict[tokens[j]] += 1
+                        freq_dict[lemma] += 1
             except IndexError as e:
                 pass
                 #print('Token list length: ' + str(len(tokens)))

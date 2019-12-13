@@ -38,6 +38,18 @@ def hasNumbers(inp):
     return False
     #return any(char.isdigit() for char in inp)
 
+from nltk.corpus import wordnet
+
+def get_wordnet_pos(word):
+    """Map POS tag to first character lemmatize() accepts"""
+    tag = nltk.pos_tag([word])[0][1][0].upper()
+    tag_dict = {"J": wordnet.ADJ,
+                "N": wordnet.NOUN,
+                "V": wordnet.VERB,
+                "R": wordnet.ADV}
+
+    return tag_dict.get(tag, wordnet.NOUN)
+
 text_filepath = './content/cleaned/'
 root_cleaned_filepath = './'
 blacklist = [
@@ -113,6 +125,7 @@ for root, dirs, files in os.walk(text_filepath, topdown=True):
                     tokens.pop(j)
                     continue
                 if flag == 'noun':
+                    #print(pos[j][1][0])
                     if pos[j][1][0] == 'N':
                         if tokens[j] not in freq_dict.keys():
                             freq_dict[tokens[j]] = 1
@@ -122,6 +135,7 @@ for root, dirs, files in os.walk(text_filepath, topdown=True):
                         tokens.pop(j)
                         continue
                 elif flag == 'verb':
+                    print('verb')
                     if pos[j][1][0] == 'R' or pos[j][1][0] == 'V':
                         if tokens[j] not in freq_dict.keys():
                             freq_dict[tokens[j]] = 1
@@ -131,7 +145,7 @@ for root, dirs, files in os.walk(text_filepath, topdown=True):
                         tokens.pop(j)
                         continue
                 else:
-                    lemma = lemmatizer.lemmatize(tokens[j])
+                    lemma = lemmatizer.lemmatize(tokens[j], get_wordnet_pos(tokens[j]))
                     if lemma not in freq_dict.keys():
                         freq_dict[lemma] = 1
                     else:
@@ -157,7 +171,7 @@ dic_keys = list(freq_dict.keys())
 postokens = nltk.pos_tag(dic_keys)
 with open('word_freq.csv', 'a+', encoding='utf-8') as freq_stat:
     for k in range(len(dic_keys) - 1):
-        strtopend = dic_keys[k] + ',' + str(freq_dict[dic_keys[k]]) + ',' + postokens[k + 1][1] + '\n'
+        strtopend = dic_keys[k] + ',' + str(freq_dict[dic_keys[k]]) + ',' + get_wordnet_pos(dic_keys[k]) + '\n'
         freq_stat.write(strtopend)
 # build dictionary
 dictionary = Dictionary(stemmed_corpus)

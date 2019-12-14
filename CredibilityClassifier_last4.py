@@ -161,15 +161,15 @@ def main():
                     outputs = bertModel(indexed_tokens.to(args.device).unsqueeze(0))
                     last4 = outputs[2][-4:]
                     last4_mean = torch.mean(torch.stack(last4), 0)  # [number_of_tokens, 768]
+                    last4_mean = torch.mean(last4_mean.squeeze(0), 0)  # calculate the mean vector of each word
                     torch.stack((sentence_embedding, last4_mean),0)
-
-            predicted_is_credible = model(torch.mean(sentence_embedding,0))
+            predicted_is_credible = model(sentence_embedding)
             # zero the parameter gradients
             # optimizer.zero_grad()
 
             # forward + backward + optimize
             loss = criterion(predicted_is_credible.unsqueeze(0),
-                             torch.tensor(label).type(torch.FloatTensor).to(args.device))
+                             torch.tensor([label]).unsqueeze(0).type(torch.FloatTensor).to(args.device))
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(),
             #                               max_grad_norm)  # Gradient clipping is not in AdamW anymore (so you can use amp without issue)

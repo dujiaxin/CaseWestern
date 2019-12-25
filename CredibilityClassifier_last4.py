@@ -94,6 +94,8 @@ def main():
                         help="Whether to run training.")
     parser.add_argument('--seed', type=int, default=1,
                         help="random seed for initialization")
+    parser.add_argument('--epoch', type=int, default=4,
+                        help="epoch")
     parser.add_argument('--overwrite_output_dir', action='store_true',
                         help="Overwrite the content of the output directory")
     parser.add_argument("--learning_rate", default=0.03, type=float,
@@ -111,7 +113,6 @@ def main():
                 args.output_dir))
     args.embed_dim = 768
     args.num_class = 1
-    args.epoch = 1
     # Setup CUDA, GPU & distributed training
     args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # torch.distributed.init_process_group(backend='nccl')

@@ -1,6 +1,7 @@
 import argparse
 import torch
 from torch.autograd import Variable
+import torch.utils.data as Data
 from transformers import *
 from transformers import BertTokenizer, BertModel, WEIGHTS_NAME, CONFIG_NAME
 import os
@@ -22,7 +23,8 @@ from tqdm import tqdm, trange
 class Classifier(torch.nn.Module):
     def __init__(self, args):
         super().__init__()
-        self.fc = torch.nn.Linear(args.embed_dim, args.num_class)
+        self.lstm = torch.nn.LSTM(args.embed_dim, args.lstm_hidden_dim, bidirectional=True, batch_first=True)
+        self.fc = torch.nn.Linear(args.embed_dim*2, args.num_class)
         self.init_weights()
 
     def init_weights(self):
@@ -31,9 +33,20 @@ class Classifier(torch.nn.Module):
         self.fc.bias.data.zero_()
 
     def forward(self, status):
-        classes = self.fc(status)
-        return torch.sigmoid(classes)
+        lstmout= self.lstm(status)
+        fcin = torch.cat([lstmout[1][1][0,:,:], lstmout[1][1][1,:,:]], dim=1)
+        classes = self.fc(fcin.squeeze(0))
+        return classes
 
+class CWData(Data.Dataset):
+    def __init__(self, data):
+        self.data = data
+
+    def __getitem__(self, index):
+        return self.data[index]
+
+    def __len__(self):
+        return len(self.data)
 
 def set_seed(args):
     random.seed(args.seed)
@@ -45,7 +58,7 @@ def set_seed(args):
 
 def fill_sentence(tokenized_ids):
     seq_lengths = torch.LongTensor(list(map(len, tokenized_ids)))
-    seq_tensor = Variable(torch.zeros((len(tokenized_ids), 300))).long()
+    seq_tensor = Variable(torch.zeros((len(tokenized_ids), 60))).long()
     for idx, (seq, seqlen) in enumerate(zip(tokenized_ids, seq_lengths)):
         seq_tensor[idx, :seqlen] = torch.LongTensor(seq)
     return seq_tensor
@@ -54,6 +67,20 @@ def fill_sentence(tokenized_ids):
 def evaluate():
     pass
 
+def read_data(filepath, epoch = 4):
+    # print("read data")
+    loader = None
+    with open(filepath, 'r') as f:
+        train_data = json.load(f)
+        batch_size = int((len(train_data) / epoch)) + 1
+        train_data = CWData(train_data)
+        loader = Data.DataLoader(
+            dataset=train_data,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=2, # number of process
+        )
+    return loader
 
 # train the credibility classifier model
 def main():
@@ -70,6 +97,10 @@ def main():
                         help="Whether to run training.")
     parser.add_argument('--seed', type=int, default=1,
                         help="random seed for initialization")
+    parser.add_argument('--epoch', type=int, default=4,
+                        help="epoch")
+    parser.add_argument('--lstm_hidden_dim', type=int, default=768,
+                        help="lstm_hidden_dim in classifier")
     parser.add_argument('--overwrite_output_dir', action='store_true',
                         help="Overwrite the content of the output directory")
     parser.add_argument("--learning_rate", default=0.03, type=float,
@@ -87,15 +118,16 @@ def main():
                 args.output_dir))
     args.embed_dim = 768
     args.num_class = 1
-    args.epoch = 4
     # Setup CUDA, GPU & distributed training
     args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # torch.distributed.init_process_group(backend='nccl')
     args.n_gpu = torch.cuda.device_count()
     set_seed(args)  # Added here for reproductibility (even between python 2 and 3)
     # Load the data
-    with open(args.train_file, 'r') as f:
-        trainloader = json.load(f)
+    # with open(args.train_file, 'r') as f:
+    #     trainloader = json.load(f)
+    trainloader = read_data(args.train_file, args.epoch)
+
     # Load pre-trained model tokenizer (vocabulary)
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', cache_dir=args.transformer_dir, do_lower_case=True,
                                               do_basic_tokenize=True)
@@ -106,7 +138,8 @@ def main():
     # document_encoder = torch.nn.GRU(768, 300)
     model = Classifier(args)
     # Loss function
-    criterion = torch.nn.BCELoss()  # Optimizer
+    criterion = torch.nn.BCEWithLogitsLoss()
+    # Optimizer
     optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum)
 
     # Set the model in evaluation mode to deactivate the DropOut modules
@@ -117,31 +150,33 @@ def main():
     model.to(args.device)
     logger.info("Training/evaluation parameters %s", args)
     for epoch in range(args.epoch):
+        print('now in epoch ' + str(epoch))
         running_loss = 0.0
         for i, data in enumerate(trainloader, 0):
             # get the inputs; data is a list of [inputs, labels]
-            inputs = data['document'].lower().split('.')
-            label = data['is_credible']
+            inputs = data['document'][i].lower().split('.')
+            if data['credible_issue'][i]:
+                label = 1
+            else:
+                label = 0
+            sentence_embedding = torch.empty(768).to(args.device).unsqueeze(0)
             with torch.no_grad():  # When embedding the sentence use BERT, we don't train the model.
-                indexed_tokens = []
                 for ii, sentence in enumerate(inputs, 1):
+                    if len(sentence) < 3:
+                        continue
                     tokenized_text = tokenizer.tokenize(sentence)
                     # Convert token to vocabulary indices
-                    indexed_tokens.append(tokenizer.convert_tokens_to_ids(tokenized_text))
-                # Convert inputs to PyTorch tensors
-
-                # padding the sentence so the tensors have same shape
-                padded = fill_sentence(indexed_tokens)
-                outputs = bertModel(padded.to(args.device))
-
-            # predicted_is_credible = document_encoder(outputs)
-            doc_embedding = torch.mean(outputs[0], (0, 1))
-            predicted_is_credible = model(doc_embedding)
+                    indexed_tokens = torch.tensor(tokenizer.convert_tokens_to_ids(tokenized_text))
+                    outputs = bertModel(indexed_tokens.to(args.device).unsqueeze(0))
+                    last_cls = outputs[0][:,0,:]
+                    sentence_embedding = torch.cat([sentence_embedding, last_cls], dim=0)
+            predicted_is_credible = model(sentence_embedding.unsqueeze(0))
             # zero the parameter gradients
             # optimizer.zero_grad()
 
             # forward + backward + optimize
-            loss = criterion(predicted_is_credible.unsqueeze(0), torch.tensor(label).type(torch.FloatTensor).to(args.device))
+            loss = criterion(predicted_is_credible.unsqueeze(0),
+                             torch.tensor([label]).unsqueeze(0).type(torch.FloatTensor).to(args.device))
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(),
             #                               max_grad_norm)  # Gradient clipping is not in AdamW anymore (so you can use amp without issue)
@@ -150,24 +185,26 @@ def main():
 
             # print statistics
             running_loss += loss
-            if i % 2000 == 1999:  # print every 2000 mini-batches
+            if i % 20 == 19:  # print every 20 mini-batches
                 print('[%d, %5d] loss: %.3f' %
-                      (epoch + 1, i + 1, running_loss / 2000))
+                      (epoch + 1, i + 1, running_loss / 20))
                 running_loss = 0.0
 
-    # Step 1: Save a model, configuration and vocabulary that you have fine-tuned
-    if not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir)
-    # If we have a distributed model, save only the encapsulated model
-    # (it was wrapped in PyTorch DistributedDataParallel or DataParallel)
-    logger.info("Saving model checkpoint to %s", args.output_dir)
-    model_to_save = model.module if hasattr(model, 'module') else model
-    # Good practice: save your training arguments together with the trained model
-    torch.save(args, os.path.join(args.output_dir, 'training_args.bin'))
-    # If we save using the predefined names, we can load using `from_pretrained`
-    output_model_file = os.path.join(args.output_dir, WEIGHTS_NAME)
-    torch.save(model_to_save.state_dict(), output_model_file)
-    print('Finished Training')
+            # Step 1: Save a model, configuration and vocabulary that you have fine-tuned
+        if not os.path.exists(args.output_dir):
+            os.makedirs(args.output_dir)
+            # If we have a distributed model, save only the encapsulated model
+            # (it was wrapped in PyTorch DistributedDataParallel or DataParallel)
+        logger.info("Saving model checkpoint to %s", args.output_dir)
+        model_to_save = model.module if hasattr(model, 'module') else model
+        # Good practice: save your training arguments together with the trained model
+        torch.save(args, os.path.join(args.output_dir, 'training_args.bin'))
+        # If we save using the predefined names, we can load using `from_pretrained`
+        output_model_file = os.path.join(args.output_dir, WEIGHTS_NAME)
+        torch.save(model_to_save.state_dict(), output_model_file)
+        print('Finished Training')
+
+        evaluate()
 
 
 if __name__ == '__main__':

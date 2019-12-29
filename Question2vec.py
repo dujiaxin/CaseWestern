@@ -137,13 +137,13 @@ if __name__ == '__main__':
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
     short_questions = []
-    with open(BASE_DIR + '/data/short_question.txt', 'r') as f:
+    with open(BASE_DIR + '/data/short_question.txt', 'r', encoding='utf-8') as f:
         for line in f.readlines():
             l = line.strip()  # delete "\n"
             short_questions.append(l)
 
     long_questions = []
-    with open(BASE_DIR + '/data/long_question.txt', 'r') as f:
+    with open(BASE_DIR + '/data/long_question.txt', 'r', encoding='utf-8') as f:
         for line in f.readlines():
             l = line.strip()  # delete "\n"
             long_questions.append(l)

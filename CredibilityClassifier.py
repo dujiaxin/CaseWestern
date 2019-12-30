@@ -33,6 +33,7 @@ class Classifier(torch.nn.Module):
         self.fc.bias.data.zero_()
 
     def forward(self, status):
+        status[status != status] = 0
         lstmout= self.lstm(status)
         fcin = torch.cat([lstmout[1][1][0,:,:], lstmout[1][1][1,:,:]], dim=1)
         classes = self.fc(fcin.squeeze(0))
@@ -73,6 +74,7 @@ def read_data(filepath, epoch = 4):
     with open(filepath, 'r') as f:
         train_data = json.load(f)
         batch_size = int((len(train_data) / epoch)) + 1
+        #batch_size = len(train_data)
         train_data = CWData(train_data)
         loader = Data.DataLoader(
             dataset=train_data,
@@ -154,20 +156,18 @@ def main():
         running_loss = 0.0
         for i, data in enumerate(trainloader, 0):
             # get the inputs; data is a list of [inputs, labels]
-            inputs = data['document'][i].lower().split('.')
+            inputs = data['document'][i].replace('\n',' ').lower().split('.')
             if data['credible_issue'][i]:
                 label = 1
             else:
                 label = 0
             sentence_embedding = torch.empty(768).to(args.device).unsqueeze(0)
             with torch.no_grad():  # When embedding the sentence use BERT, we don't train the model.
-                for ii, sentence in enumerate(inputs, 1):
+                for ii, sentence in enumerate(inputs, 2):
                     if len(sentence) < 3:
                         continue
-                    tokenized_text = tokenizer.tokenize(sentence)
-                    # Convert token to vocabulary indices
-                    indexed_tokens = torch.tensor(tokenizer.convert_tokens_to_ids(tokenized_text))
-                    outputs = bertModel(indexed_tokens.to(args.device).unsqueeze(0))
+                    indexed_tokens = torch.tensor(tokenizer.encode(sentence, add_special_tokens=True)).unsqueeze(0)  # Batch size 1
+                    outputs = bertModel(indexed_tokens.to(args.device))
                     last_cls = outputs[0][:,0,:]
                     sentence_embedding = torch.cat([sentence_embedding, last_cls], dim=0)
             predicted_is_credible = model(sentence_embedding.unsqueeze(0))
@@ -204,7 +204,39 @@ def main():
         torch.save(model_to_save.state_dict(), output_model_file)
         print('Finished Training')
 
-        evaluate()
+    evaloader = read_data(args.train_file, 1)
+    accu_all = 0
+    accu_sample = 0
+    for i, data in enumerate(trainloader, 0):
+        # get the inputs; data is a list of [inputs, labels]
+        inputs = data['document'][i].lower().split('.')
+        if data['credible_issue'][i]:
+            label = 1
+        else:
+            label = 0
+        sentence_embedding = torch.empty(768).to(args.device).unsqueeze(0)
+
+        with torch.no_grad():  # When embedding the sentence use BERT, we don't train the model.
+            for ii, sentence in enumerate(inputs, 1):
+                if len(sentence) < 3:
+                    continue
+                # Convert token to vocabulary indices
+                indexed_tokens = torch.tensor(tokenizer.encode(sentence, add_special_tokens=True)).unsqueeze(0)  # Batch size 1
+                outputs = bertModel(indexed_tokens.to(args.device))
+                last_cls = outputs[0][:,0,:]
+                sentence_embedding = torch.cat([sentence_embedding, last_cls], dim=0)
+            predicted_is_credible = model(sentence_embedding.unsqueeze(0))
+        # zero the parameter gradients
+        # optimizer.zero_grad()
+
+        # forward + backward + optimize
+            loss2 = criterion(predicted_is_credible.unsqueeze(0),
+                             torch.tensor([label]).unsqueeze(0).type(torch.FloatTensor).to(args.device))
+            accu_all = accu_all+1
+            if loss2 < 0.5:
+                accu_sample = accu_sample+1
+    print(accu_sample/accu_all)
+
 
 
 if __name__ == '__main__':

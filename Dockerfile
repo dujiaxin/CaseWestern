@@ -17,7 +17,7 @@ RUN curl -o ~/miniconda.sh -O  https://repo.continuum.io/miniconda/Miniconda3-la
      /opt/conda/bin/conda clean -ya
 ENV PATH /opt/conda/bin:$PATH
 
-RUN pip install nltk transformers python-docx wordcloud pdfminer scikit-learn mxnet gluonnlp tensorboardX torchtext
+RUN pip install nltk transformers python-docx wordcloud pdfminer scikit-learn mxnet gluonnlp tensorboardX torchtext sentencepiece
 
 
 

@@ -67,6 +67,16 @@ def set_seed(args):
         torch.cuda.manual_seed_all(args.seed)
 
 
+def generate_batch(batch):
+    for entry in batch:
+        sentences = batch['document'].replace('\n', ' ').lower().split('.')
+        if batch['credible_issue']:
+            labels = 1
+        else:
+            labels = 0
+    return sentences,  labels
+
+
 def fill_sentence(tokenized_ids):
     seq_lengths = torch.LongTensor(list(map(len, tokenized_ids)))
     seq_tensor = Variable(torch.zeros((len(tokenized_ids), 60))).long()
@@ -84,16 +94,17 @@ def read_data(args):
     loader = None
     with open(args.train_file, 'r') as f:
         train_data = json.load(f)
-        #batch_size = int((len(train_data) / args.epoch)) + 1
-        batch_size = len(train_data)
-        train_data = CWData(train_data)
-        loader = Data.DataLoader(
-            dataset=train_data,
-            batch_size=batch_size,
-            shuffle=True,
-            num_workers=0, # number of process
-        )
-    return loader
+        return train_data
+    #     #batch_size = int((len(train_data) / args.epoch)) + 1
+    #     batch_size = len(train_data)
+    #     train_data = CWData(train_data)
+    #     loader = Data.DataLoader(
+    #         dataset=train_data,
+    #         batch_size=batch_size,
+    #         shuffle=True,
+    #         num_workers=0, # number of process
+    #     )
+    # return loader
 
 
 def train(args, model, bertModel, tokenizer, criterion):
@@ -104,7 +115,7 @@ def train(args, model, bertModel, tokenizer, criterion):
     trainloader = read_data(args)
 
     # Optimizer
-    optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum)
+    #optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum)
 
     logger.info("Training/evaluation parameters %s", args)
     for epoch in range(args.epoch):
@@ -112,8 +123,8 @@ def train(args, model, bertModel, tokenizer, criterion):
         running_loss = 0.0
         for i, data in enumerate(trainloader, 0):
             # get the inputs; data is a list of [inputs, labels]
-            inputs = data['document'][i].replace('\n', ' ').lower().split('.')
-            if data['credible_issue'][i]:
+            inputs = data['document'].replace('\n', ' ').lower().split('.')
+            if data['credible_issue']:
                 label = 1
             else:
                 label = 0
@@ -121,11 +132,21 @@ def train(args, model, bertModel, tokenizer, criterion):
             with torch.no_grad():  # When embedding the sentence use BERT, we don't train the model.
                 for ii, sentence in enumerate(inputs, 2):
                     if len(sentence) < 3:
+                        # print(sentence)
+                        continue
+                    elif len(sentence) > 500:
+                        print(data['rms'])
+                        print(sentence)
                         continue
                     indexed_tokens = torch.tensor(tokenizer.encode(sentence, add_special_tokens=True)).unsqueeze(
                         0)  # Batch size 1
                     outputs = bertModel(indexed_tokens.to(args.device))
                     last_cls = outputs[0][:, 0, :]
+                    if torch.isnan(last_cls).any():
+                        print(last_cls)
+                        print(data['rms'])
+                        print(sentence)
+
                     sentence_embedding = torch.cat([sentence_embedding, last_cls], dim=0)
             predicted_is_credible = model(sentence_embedding.unsqueeze(0))
             # zero the parameter gradients
@@ -138,14 +159,14 @@ def train(args, model, bertModel, tokenizer, criterion):
             # torch.nn.utils.clip_grad_norm_(model.parameters(),
             #                               max_grad_norm)  # Gradient clipping is not in AdamW anymore (so you can use amp without issue)
             # scheduler.step()
-            optimizer.step()
+            # optimizer.step()
 
             # print statistics
             running_loss += loss
-            print(i)
-            if i % 20 == 19:  # print every 20 mini-batches
+            # print(i)
+            if i % 200 == 199:  # print every 200 mini-batches
                 print('[%d, %5d] loss: %.3f' %
-                      (epoch + 1, i + 1, running_loss / 20))
+                      (epoch + 1, i + 1, running_loss / 200))
                 running_loss = 0.0
 
             # Step 1: Save a model, configuration and vocabulary that you have fine-tuned
@@ -164,6 +185,7 @@ def train(args, model, bertModel, tokenizer, criterion):
 
 
 def evaluate(args, model, bertModel, tokenizer, criterion):
+    print('evaluate in progress')
     trainloader = read_data(args)
     true_pos = 0
     true_neg = 0
@@ -172,10 +194,10 @@ def evaluate(args, model, bertModel, tokenizer, criterion):
     output_model_file = os.path.join(args.output_dir, WEIGHTS_NAME)
     model.load_state_dict(torch.load(output_model_file))
     model.eval()
-    for i, data in enumerate(trainloader, 0):
+    for i, data in enumerate(tqdm(trainloader), 0):
         # get the inputs; data is a list of [inputs, labels]
-        inputs = data['document'][i].lower().split('.')
-        if data['credible_issue'][i]:
+        inputs = data['document'].lower().split('.')
+        if data['credible_issue']:
             label = 1
         else:
             label = 0
@@ -184,6 +206,9 @@ def evaluate(args, model, bertModel, tokenizer, criterion):
         with torch.no_grad():  # When embedding the sentence use BERT, we don't train the model.
             for ii, sentence in enumerate(inputs, 1):
                 if len(sentence) < 3:
+                    continue
+                elif len(sentence) > 500:
+                    print(data['rms'])
                     print(sentence)
                     continue
                 # Convert token to vocabulary indices
@@ -302,12 +327,7 @@ def main():
             logging.getLogger("transformers.modeling_utils").setLevel(logging.WARN)  # Reduce logging
         logger.info("Evaluate the following checkpoints: %s", checkpoints)
         for checkpoint in checkpoints:
-            global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
-            prefix = checkpoint.split("/")[-1] if checkpoint.find("checkpoint") != -1 else ""
-
-            model = model_class.from_pretrained(checkpoint)
-            model.to(args.device)
-            evaluate(args, model, bertModel, tokenizer, )
+            evaluate(args, model, bertModel, tokenizer, criterion)
 
     print('end program')
     return

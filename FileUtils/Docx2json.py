@@ -22,10 +22,8 @@ class Docx2json():
 
     def check_rms(self, rms):
         if '-000' in rms:
-            print(rms)
             rms = rms.replace('000','')
         if '-00' in rms:
-            print(rms)
             rms = rms.replace('00','')
         if rms in self.rms_notcredible:
             self.count_rms = self.count_rms+1

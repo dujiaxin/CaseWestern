@@ -1,9 +1,9 @@
 import argparse
 import torch
 from torch.autograd import Variable
+import torch.nn.functional as F
 import torch.utils.data as Data
 from transformers import *
-from transformers import BertTokenizer, BertModel, WEIGHTS_NAME, CONFIG_NAME
 import os
 import json
 import random
@@ -12,6 +12,7 @@ import glob
 # OPTIONAL: if you want to have more information on what's happening under the hood, activate the logger as follows
 import logging
 from torch.nn.utils.rnn import pad_sequence
+import re
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -34,7 +35,8 @@ class Classifier(torch.nn.Module):
     def __init__(self, args):
         super().__init__()
         self.lstm = torch.nn.LSTM(args.embed_dim, args.lstm_hidden_dim, bidirectional=True, batch_first=True)
-        self.fc = torch.nn.Linear(args.embed_dim*2, args.num_class)
+        self.fc1 = F.relu(torch.nn.Linear(args.embed_dim * 2, args.embed_dim * 4))
+        self.fc2 = torch.nn.Linear(args.embed_dim * 4, args.num_class)
         self.init_weights()
 
     def init_weights(self):
@@ -63,6 +65,8 @@ def set_seed(args):
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
     if args.n_gpu > 0:
         torch.cuda.manual_seed_all(args.seed)
 
@@ -75,6 +79,14 @@ def generate_batch(batch):
         else:
             labels = 0
     return sentences,  labels
+
+
+def split_sentence(string, maxsplit=0):
+    # split document to sentences
+    # maybe can use nltk or better method
+    delimiters = ".", "!", "-", ",", "\n", "\t"
+    regexPattern = '|'.join(map(re.escape, delimiters))
+    return re.split(regexPattern, string, maxsplit)
 
 
 def fill_sentence(tokenized_ids):
@@ -116,14 +128,15 @@ def train(args, model, bertModel, tokenizer, criterion):
 
     # Optimizer
     #optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum)
-
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
     logger.info("Training/evaluation parameters %s", args)
     for epoch in range(args.epoch):
         print('now in epoch ' + str(epoch))
         running_loss = 0.0
         for i, data in enumerate(trainloader, 0):
             # get the inputs; data is a list of [inputs, labels]
-            inputs = data['document'].replace('\n', ' ').lower().split('.')
+            # inputs = data['document'].replace('\n', ' ').lower().split('.')
+            inputs = split_sentence(data['document'])
             if data['credible_issue']:
                 label = 1
             else:
@@ -135,10 +148,10 @@ def train(args, model, bertModel, tokenizer, criterion):
                         # print(sentence)
                         continue
                     elif len(sentence) > 500:
-                        print(data['rms'])
-                        print(sentence)
+                        # print(data['rms'])
+                        # print(sentence)
                         continue
-                    indexed_tokens = torch.tensor(tokenizer.encode(sentence, add_special_tokens=True)).unsqueeze(
+                    indexed_tokens = torch.tensor(tokenizer.encode(sentence, add_special_tokens=True, max_length=512, pad_to_max_length=True)).unsqueeze(
                         0)  # Batch size 1
                     outputs = bertModel(indexed_tokens.to(args.device))
                     last_cls = outputs[0][:, 0, :]
@@ -153,13 +166,14 @@ def train(args, model, bertModel, tokenizer, criterion):
             # optimizer.zero_grad()
 
             # forward + backward + optimize
+            optimizer.zero_grad()
             loss = criterion(predicted_is_credible.unsqueeze(0),
                              torch.tensor([label]).unsqueeze(0).type(torch.FloatTensor).to(args.device))
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(),
             #                               max_grad_norm)  # Gradient clipping is not in AdamW anymore (so you can use amp without issue)
             # scheduler.step()
-            # optimizer.step()
+            optimizer.step()
 
             # print statistics
             running_loss += loss
@@ -196,7 +210,8 @@ def evaluate(args, model, bertModel, tokenizer, criterion):
     model.eval()
     for i, data in enumerate(tqdm(trainloader), 0):
         # get the inputs; data is a list of [inputs, labels]
-        inputs = data['document'].lower().split('.')
+        # inputs = data['document'].replace('\n', ' ').lower().split('.')
+        inputs = split_sentence(data['document'])
         if data['credible_issue']:
             label = 1
         else:
@@ -233,6 +248,10 @@ def evaluate(args, model, bertModel, tokenizer, criterion):
                 false_pos = false_pos+1
     precision = true_pos/(true_pos+false_pos)
     recall = true_pos/(true_pos+false_neg)
+    print("true_pos: "+str(true_pos))
+    print("true_neg: " + str(true_neg))
+    print("false_pos: " + str(false_pos))
+    print("false_neg: " + str(false_neg))
     print("precision: "+str(precision))
     print("recall: " + str(recall))
     print('F1: ' +str(precision*recall/(precision+recall)))
@@ -267,10 +286,10 @@ def main():
                         help="lstm_hidden_dim in classifier")
     parser.add_argument('--overwrite_output_dir', action='store_true',
                         help="Overwrite the content of the output directory")
-    parser.add_argument("--learning_rate", default=0.03, type=float,
-                        help="The initial learning rate for SGD.")
-    parser.add_argument("--momentum", default=0.9, type=float,
-                        help="The initial learning rate for SGD.")
+    parser.add_argument("--learning_rate", default=1e-4, type=float,
+                        help="The initial learning rate for Adam.")
+    # parser.add_argument("--momentum", default=0.9, type=float,
+    #                     help="The initial learning rate for SGD.")
     parser.add_argument("--transformer_dir", default='./model/', type=str,
                         help="The hugging face transformer cache directory.")
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
@@ -290,7 +309,7 @@ def main():
     args.num_class = 1
     args.do_lower_case = True
     # Setup CUDA, GPU & distributed training
-    args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    args.device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     # torch.distributed.init_process_group(backend='nccl')
     args.n_gpu = torch.cuda.device_count()
     set_seed(args)  # Added here for reproductibility (even between python 2 and 3)

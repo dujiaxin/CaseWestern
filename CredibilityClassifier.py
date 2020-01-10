@@ -11,7 +11,6 @@ import numpy as np
 import glob
 # OPTIONAL: if you want to have more information on what's happening under the hood, activate the logger as follows
 import logging
-from torch.nn.utils.rnn import pad_sequence
 import re
 
 try:
@@ -34,9 +33,11 @@ MODEL_CLASSES = {
 class Classifier(torch.nn.Module):
     def __init__(self, args):
         super().__init__()
+        self.dropout = torch.nn.Dropout(p=0.2)
         self.lstm = torch.nn.LSTM(args.embed_dim, args.lstm_hidden_dim, bidirectional=True, batch_first=True)
-        self.fc1 = F.relu(torch.nn.Linear(args.embed_dim * 2, args.embed_dim * 4))
-        self.fc2 = torch.nn.Linear(args.embed_dim * 4, args.num_class)
+        self.fc = torch.nn.Linear(args.embed_dim * 2, args.num_class)
+        # self.fc1 = torch.nn.Linear(args.embed_dim * 2, args.embed_dim * 4)
+        # self.fc2 = torch.nn.Linear(args.embed_dim * 4, args.num_class)
         self.init_weights()
 
     def init_weights(self):
@@ -45,9 +46,12 @@ class Classifier(torch.nn.Module):
         self.fc.bias.data.zero_()
 
     def forward(self, status):
-        status[status != status] = 0
-        lstmout= self.lstm(status)
+        lstmout= self.lstm(self.dropout(status))
+        # lstmout = self.lstm(status)
         fcin = torch.cat([lstmout[1][1][0,:,:], lstmout[1][1][1,:,:]], dim=1)
+        if torch.isnan(fcin).any():
+            print('fcin is nan')
+            print(lstmout)
         classes = self.fc(fcin.squeeze(0))
         return classes
 
@@ -84,29 +88,20 @@ def generate_batch(batch):
 def split_sentence(string, maxsplit=0):
     # split document to sentences
     # maybe can use nltk or better method
-    delimiters = ".", "!", "-", ",", "\n", "\t"
+    delimiters = ".", "!", "-", ",", "\"", ";", "\n", "\t"
     regexPattern = '|'.join(map(re.escape, delimiters))
     return re.split(regexPattern, string, maxsplit)
-
-
-def fill_sentence(tokenized_ids):
-    seq_lengths = torch.LongTensor(list(map(len, tokenized_ids)))
-    seq_tensor = Variable(torch.zeros((len(tokenized_ids), 60))).long()
-    for idx, (seq, seqlen) in enumerate(zip(tokenized_ids, seq_lengths)):
-        seq_tensor[idx, :seqlen] = torch.LongTensor(seq)
-    return seq_tensor
 
 
 def to_list(tensor):
     return tensor.detach().cpu().tolist()
 
 
-def read_data(args):
-    # print("read data")
-    loader = None
-    with open(args.train_file, 'r') as f:
+def read_data(filepath):
+    with open(filepath, 'r', encoding='utf-8') as f:
         train_data = json.load(f)
-        return train_data
+    # random.shuffle(train_data)
+    return train_data
     #     #batch_size = int((len(train_data) / args.epoch)) + 1
     #     batch_size = len(train_data)
     #     train_data = CWData(train_data)
@@ -121,17 +116,24 @@ def read_data(args):
 
 def train(args, model, bertModel, tokenizer, criterion):
     """ Train the model """
-    # Load the data
-    # with open(args.train_file, 'r') as f:
-    #     trainloader = json.load(f)
-    trainloader = read_data(args)
+
 
     # Optimizer
     #optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum)
+    # Prepare optimizer and schedule (linear warmup and decay)
+    no_decay = ["bias", "LayerNorm.weight"]
+    # optimizer = AdamW(model.parameters(), lr=args.learning_rate, eps=args.adam_epsilon)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+    # scheduler = get_linear_schedule_with_warmup(
+    #     optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=args.epoch
+    # )
+
+    bertModel.eval()
     logger.info("Training/evaluation parameters %s", args)
     for epoch in range(args.epoch):
         print('now in epoch ' + str(epoch))
+        # Load the data
+        trainloader = read_data(args.train_file)
         running_loss = 0.0
         for i, data in enumerate(trainloader, 0):
             # get the inputs; data is a list of [inputs, labels]
@@ -141,34 +143,38 @@ def train(args, model, bertModel, tokenizer, criterion):
                 label = 1
             else:
                 label = 0
-            sentence_embedding = torch.empty(768).to(args.device).unsqueeze(0)
+            sentence_embedding = torch.zeros(768).to(args.device).unsqueeze(0)
             with torch.no_grad():  # When embedding the sentence use BERT, we don't train the model.
                 for ii, sentence in enumerate(inputs, 2):
                     if len(sentence) < 3:
                         # print(sentence)
                         continue
-                    elif len(sentence) > 500:
-                        # print(data['rms'])
-                        # print(sentence)
+                    elif len(sentence) > args.sentence_max_length:
+                        print(data['rms'])
+                        print(sentence)
                         continue
-                    indexed_tokens = torch.tensor(tokenizer.encode(sentence, add_special_tokens=True, max_length=512, pad_to_max_length=True)).unsqueeze(
+                    indexed_tokens = torch.tensor(tokenizer.encode(sentence, add_special_tokens=True, max_length=args.sentence_max_length, pad_to_max_length=True)).unsqueeze(
                         0)  # Batch size 1
                     outputs = bertModel(indexed_tokens.to(args.device))
                     last_cls = outputs[0][:, 0, :]
-                    if torch.isnan(last_cls).any():
-                        print(last_cls)
+                    sentence_embedding = torch.cat([sentence_embedding, last_cls], dim=0)
+                    if torch.isnan(sentence_embedding).any():
+                        print('sentence_embedding nan')
+                        print(sentence_embedding)
                         print(data['rms'])
                         print(sentence)
-
-                    sentence_embedding = torch.cat([sentence_embedding, last_cls], dim=0)
-            predicted_is_credible = model(sentence_embedding.unsqueeze(0))
+            predicted_is_credible = model(sentence_embedding[1:].unsqueeze(0))
             # zero the parameter gradients
-            # optimizer.zero_grad()
 
             # forward + backward + optimize
             optimizer.zero_grad()
-            loss = criterion(predicted_is_credible.unsqueeze(0),
-                             torch.tensor([label]).unsqueeze(0).type(torch.FloatTensor).to(args.device))
+            loss = criterion(predicted_is_credible.view(-1),
+                             torch.tensor([label]).view(-1).type(torch.FloatTensor).to(args.device))
+            if torch.isnan(loss).any():
+                print('loss nan')
+                print(i)
+                print(data['rms'])
+
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(),
             #                               max_grad_norm)  # Gradient clipping is not in AdamW anymore (so you can use amp without issue)
@@ -200,13 +206,14 @@ def train(args, model, bertModel, tokenizer, criterion):
 
 def evaluate(args, model, bertModel, tokenizer, criterion):
     print('evaluate in progress')
-    trainloader = read_data(args)
+    trainloader = read_data(args.eval_file)
     true_pos = 0
     true_neg = 0
     false_pos = 0
     false_neg = 0
     output_model_file = os.path.join(args.output_dir, WEIGHTS_NAME)
     model.load_state_dict(torch.load(output_model_file))
+    bertModel.eval()
     model.eval()
     for i, data in enumerate(tqdm(trainloader), 0):
         # get the inputs; data is a list of [inputs, labels]
@@ -216,36 +223,43 @@ def evaluate(args, model, bertModel, tokenizer, criterion):
             label = 1
         else:
             label = 0
-        sentence_embedding = torch.empty(768).to(args.device).unsqueeze(0)
+        sentence_embedding = torch.zeros(768).to(args.device).unsqueeze(0)
 
         with torch.no_grad():  # When embedding the sentence use BERT, we don't train the model.
-            for ii, sentence in enumerate(inputs, 1):
+            for ii, sentence in enumerate(inputs, 2):
                 if len(sentence) < 3:
+                    # print(sentence)
                     continue
-                elif len(sentence) > 500:
+                elif len(sentence) > args.sentence_max_length:
                     print(data['rms'])
                     print(sentence)
                     continue
-                # Convert token to vocabulary indices
-                indexed_tokens = torch.tensor(tokenizer.encode(sentence, add_special_tokens=True)).unsqueeze(0)  # Batch size 1
+                indexed_tokens = torch.tensor(tokenizer.encode(sentence, add_special_tokens=True, max_length=args.sentence_max_length,
+                                                               pad_to_max_length=True)).unsqueeze(
+                    0)  # Batch size 1
                 outputs = bertModel(indexed_tokens.to(args.device))
-                last_cls = outputs[0][:,0,:]
+                last_cls = outputs[0][:, 0, :]
+                if torch.isnan(last_cls).any():
+                    print('bert nan')
+                    print(last_cls)
+                    print(data['rms'])
+                    print(sentence)
                 sentence_embedding = torch.cat([sentence_embedding, last_cls], dim=0)
-            predicted_is_credible = model(sentence_embedding.unsqueeze(0))
+        predicted_is_credible = model(sentence_embedding[1:].unsqueeze(0))
         # zero the parameter gradients
         # optimizer.zero_grad()
 
         # forward + backward + optimize
-            loss2 = criterion(predicted_is_credible.unsqueeze(0),
-                             torch.tensor([label]).unsqueeze(0).type(torch.FloatTensor).to(args.device))
-            if label == 1 and loss2 < 0.5:
-                true_pos = true_pos+1
-            elif label == 0 and loss2 < 0.5:
-                true_neg = true_neg+1
-            elif label == 1 and loss2 > 0.5:
-                false_neg = false_neg+1
-            elif label == 0 and loss2 > 0.5:
-                false_pos = false_pos+1
+        loss2 = criterion(predicted_is_credible.view(-1),
+                         torch.tensor([label]).view(-1).type(torch.FloatTensor).to(args.device))
+        if label == 1 and loss2 < args.threshold:
+            true_pos = true_pos + 1
+        elif label == 0 and loss2 < args.threshold:
+            true_neg = true_neg + 1
+        elif label == 1 and loss2 > args.threshold:
+            false_neg = false_neg + 1
+        elif label == 0 and loss2 > args.threshold:
+            false_pos = false_pos + 1
     precision = true_pos/(true_pos+false_pos)
     recall = true_pos/(true_pos+false_neg)
     print("true_pos: "+str(true_pos))
@@ -263,7 +277,9 @@ def main():
 
     # Required parameters
     parser.add_argument("--train_file", default=None, type=str, required=True,
-                        help="input json for training. E.g., input.json")
+                        help="input json for training. E.g., train.json")
+    parser.add_argument("--eval_file", default=None, type=str, required=True,
+                        help="input json for evaluation. E.g., dev.json")
     parser.add_argument("--output_dir", default=None, type=str, required=True,
                         help="The output directory where the model checkpoints and predictions will be written.")
     parser.add_argument(
@@ -280,18 +296,26 @@ def main():
                         help="Whether to run training.")
     parser.add_argument('--seed', type=int, default=1,
                         help="random seed for initialization")
-    parser.add_argument('--epoch', type=int, default=4,
+    parser.add_argument('--epoch', type=int, default=1,
                         help="epoch")
     parser.add_argument('--lstm_hidden_dim', type=int, default=768,
                         help="lstm_hidden_dim in classifier")
+    parser.add_argument('--sentence_max_length', type=int, default=256,
+                        help="sentence_max_length")
     parser.add_argument('--overwrite_output_dir', action='store_true',
                         help="Overwrite the content of the output directory")
-    parser.add_argument("--learning_rate", default=1e-4, type=float,
+    parser.add_argument("--threshold", default=0.5, type=float, help="classification threshold")
+    parser.add_argument("--weight_decay", default=0.0, type=float, help="Weight decay if we apply some.")
+    parser.add_argument("--adam_epsilon", default=1e-8, type=float, help="Epsilon for Adam optimizer.")
+    parser.add_argument("--warmup_steps", default=0, type=int, help="Linear warmup over warmup_steps.")
+    parser.add_argument("--learning_rate", default=1e-6, type=float,
                         help="The initial learning rate for Adam.")
     # parser.add_argument("--momentum", default=0.9, type=float,
     #                     help="The initial learning rate for SGD.")
     parser.add_argument("--transformer_dir", default='./model/', type=str,
                         help="The hugging face transformer cache directory.")
+    parser.add_argument("--target_GPU", default='cuda', type=str,
+                        help="The cuda you want to use. [cuda, cuda:0, cuda:1]")
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument(
         "--eval_all_checkpoints",
@@ -309,7 +333,7 @@ def main():
     args.num_class = 1
     args.do_lower_case = True
     # Setup CUDA, GPU & distributed training
-    args.device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    args.device = torch.device(args.target_GPU if torch.cuda.is_available() else "cpu")
     # torch.distributed.init_process_group(backend='nccl')
     args.n_gpu = torch.cuda.device_count()
     set_seed(args)  # Added here for reproductibility (even between python 2 and 3)
@@ -329,7 +353,6 @@ def main():
     criterion = torch.nn.BCEWithLogitsLoss()
     # Set the model in evaluation mode to deactivate the DropOut modules
     # This is IMPORTANT to have reproducible results during evaluation!
-    bertModel.eval()
     # If you have a GPU, put everything on cuda
     bertModel.to(args.device)
     model.to(args.device)

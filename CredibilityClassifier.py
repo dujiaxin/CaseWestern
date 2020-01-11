@@ -22,13 +22,14 @@ from tqdm import tqdm, trange
 
 MODEL_CLASSES = {
     "bert": (BertConfig, BertModel, BertTokenizer),
-    #"xlnet": (XLNetConfig, XLNetForSequenceClassification, XLNetTokenizer),
-    #"xlm": (XLMConfig, XLMForSequenceClassification, XLMTokenizer),
-    #"roberta": (RobertaConfig, RobertaForSequenceClassification, RobertaTokenizer),
-    #"distilbert": (DistilBertConfig, DistilBertForSequenceClassification, DistilBertTokenizer),
+    # "xlnet": (XLNetConfig, XLNetForSequenceClassification, XLNetTokenizer),
+    # "xlm": (XLMConfig, XLMForSequenceClassification, XLMTokenizer),
+    # "roberta": (RobertaConfig, RobertaForSequenceClassification, RobertaTokenizer),
+    # "distilbert": (DistilBertConfig, DistilBertForSequenceClassification, DistilBertTokenizer),
     "albert": (AlbertConfig, AlbertModel, AlbertTokenizer),
-    #"xlmroberta": (XLMRobertaConfig, XLMRobertaForSequenceClassification, XLMRobertaTokenizer),
+    # "xlmroberta": (XLMRobertaConfig, XLMRobertaForSequenceClassification, XLMRobertaTokenizer),
 }
+
 
 class Classifier(torch.nn.Module):
     def __init__(self, args):
@@ -46,14 +47,15 @@ class Classifier(torch.nn.Module):
         self.fc.bias.data.zero_()
 
     def forward(self, status):
-        lstmout= self.lstm(self.dropout(status))
+        lstmout = self.lstm(self.dropout(status))
         # lstmout = self.lstm(status)
-        fcin = torch.cat([lstmout[1][1][0,:,:], lstmout[1][1][1,:,:]], dim=1)
+        fcin = torch.cat([lstmout[1][1][0, :, :], lstmout[1][1][1, :, :]], dim=1)
         if torch.isnan(fcin).any():
             print('fcin is nan')
             print(lstmout)
         classes = self.fc(fcin.squeeze(0))
         return classes
+
 
 class CWData(Data.Dataset):
     def __init__(self, data):
@@ -65,6 +67,7 @@ class CWData(Data.Dataset):
     def __len__(self):
         return len(self.data)
 
+
 def set_seed(args):
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -73,16 +76,6 @@ def set_seed(args):
     torch.backends.cudnn.benchmark = False
     if args.n_gpu > 0:
         torch.cuda.manual_seed_all(args.seed)
-
-
-def generate_batch(batch):
-    for entry in batch:
-        sentences = batch['document'].replace('\n', ' ').lower().split('.')
-        if batch['credible_issue']:
-            labels = 1
-        else:
-            labels = 0
-    return sentences,  labels
 
 
 def split_sentence(string, maxsplit=0):
@@ -117,9 +110,8 @@ def read_data(filepath):
 def train(args, model, bertModel, tokenizer, criterion):
     """ Train the model """
 
-
     # Optimizer
-    #optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum)
+    # optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum)
     # Prepare optimizer and schedule (linear warmup and decay)
     no_decay = ["bias", "LayerNorm.weight"]
     # optimizer = AdamW(model.parameters(), lr=args.learning_rate, eps=args.adam_epsilon)
@@ -143,7 +135,7 @@ def train(args, model, bertModel, tokenizer, criterion):
                 label = 1
             else:
                 label = 0
-            sentence_embedding = torch.zeros(768).to(args.device).unsqueeze(0)
+            sentence_embedding = torch.zeros(args.embed_dim).to(args.device).unsqueeze(0)
             with torch.no_grad():  # When embedding the sentence use BERT, we don't train the model.
                 for ii, sentence in enumerate(inputs, 2):
                     if len(sentence) < 3:
@@ -153,7 +145,9 @@ def train(args, model, bertModel, tokenizer, criterion):
                         print(data['rms'])
                         print(sentence)
                         continue
-                    indexed_tokens = torch.tensor(tokenizer.encode(sentence, add_special_tokens=True, max_length=args.sentence_max_length, pad_to_max_length=True)).unsqueeze(
+                    indexed_tokens = torch.tensor(
+                        tokenizer.encode(sentence, add_special_tokens=True, max_length=args.sentence_max_length,
+                                         pad_to_max_length=True)).unsqueeze(
                         0)  # Batch size 1
                     outputs = bertModel(indexed_tokens.to(args.device))
                     last_cls = outputs[0][:, 0, :]
@@ -190,18 +184,19 @@ def train(args, model, bertModel, tokenizer, criterion):
                 running_loss = 0.0
 
             # Step 1: Save a model, configuration and vocabulary that you have fine-tuned
-        if not os.path.exists(args.output_dir):
-            os.makedirs(args.output_dir)
+        output_dir = os.path.join(args.output_dir, "checkpoint-{}".format(epoch))
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
             # If we have a distributed model, save only the encapsulated model
             # (it was wrapped in PyTorch DistributedDataParallel or DataParallel)
         logger.info("Saving model checkpoint to %s", args.output_dir)
         model_to_save = model.module if hasattr(model, 'module') else model
         # Good practice: save your training arguments together with the trained model
-        torch.save(args, os.path.join(args.output_dir, 'training_args.bin'))
+        torch.save(args, os.path.join(output_dir, 'training_args.bin'))
         # If we save using the predefined names, we can load using `from_pretrained`
-        output_model_file = os.path.join(args.output_dir, WEIGHTS_NAME)
+        output_model_file = os.path.join(output_dir, WEIGHTS_NAME)
         torch.save(model_to_save.state_dict(), output_model_file)
-        print('Finished Training')
+    print('Finished Training')
 
 
 def evaluate(args, model, bertModel, tokenizer, criterion):
@@ -211,8 +206,6 @@ def evaluate(args, model, bertModel, tokenizer, criterion):
     true_neg = 0
     false_pos = 0
     false_neg = 0
-    output_model_file = os.path.join(args.output_dir, WEIGHTS_NAME)
-    model.load_state_dict(torch.load(output_model_file))
     bertModel.eval()
     model.eval()
     for i, data in enumerate(tqdm(trainloader), 0):
@@ -223,7 +216,7 @@ def evaluate(args, model, bertModel, tokenizer, criterion):
             label = 1
         else:
             label = 0
-        sentence_embedding = torch.zeros(768).to(args.device).unsqueeze(0)
+        sentence_embedding = torch.zeros(args.embed_dim).to(args.device).unsqueeze(0)
 
         with torch.no_grad():  # When embedding the sentence use BERT, we don't train the model.
             for ii, sentence in enumerate(inputs, 2):
@@ -234,8 +227,9 @@ def evaluate(args, model, bertModel, tokenizer, criterion):
                     print(data['rms'])
                     print(sentence)
                     continue
-                indexed_tokens = torch.tensor(tokenizer.encode(sentence, add_special_tokens=True, max_length=args.sentence_max_length,
-                                                               pad_to_max_length=True)).unsqueeze(
+                indexed_tokens = torch.tensor(
+                    tokenizer.encode(sentence, add_special_tokens=True, max_length=args.sentence_max_length,
+                                     pad_to_max_length=True)).unsqueeze(
                     0)  # Batch size 1
                 outputs = bertModel(indexed_tokens.to(args.device))
                 last_cls = outputs[0][:, 0, :]
@@ -251,7 +245,7 @@ def evaluate(args, model, bertModel, tokenizer, criterion):
 
         # forward + backward + optimize
         loss2 = criterion(predicted_is_credible.view(-1),
-                         torch.tensor([label]).view(-1).type(torch.FloatTensor).to(args.device))
+                          torch.tensor([label]).view(-1).type(torch.FloatTensor).to(args.device))
         if label == 1 and loss2 < args.threshold:
             true_pos = true_pos + 1
         elif label == 0 and loss2 < args.threshold:
@@ -260,15 +254,15 @@ def evaluate(args, model, bertModel, tokenizer, criterion):
             false_neg = false_neg + 1
         elif label == 0 and loss2 > args.threshold:
             false_pos = false_pos + 1
-    precision = true_pos/(true_pos+false_pos)
-    recall = true_pos/(true_pos+false_neg)
-    print("true_pos: "+str(true_pos))
+    precision = true_pos / (true_pos + false_pos)
+    recall = true_pos / (true_pos + false_neg)
+    print("true_pos: " + str(true_pos))
     print("true_neg: " + str(true_neg))
     print("false_pos: " + str(false_pos))
     print("false_neg: " + str(false_neg))
-    print("precision: "+str(precision))
+    print("precision: " + str(precision))
     print("recall: " + str(recall))
-    print('F1: ' +str(precision*recall/(precision+recall)))
+    print('F1: ' + str(2 * precision * recall / (precision + recall)))
 
 
 # train the credibility classifier model
@@ -300,7 +294,8 @@ def main():
                         help="epoch")
     parser.add_argument('--lstm_hidden_dim', type=int, default=768,
                         help="lstm_hidden_dim in classifier")
-    parser.add_argument('--sentence_max_length', type=int, default=256,
+    parser.add_argument("--embed_dim", type=int, default=768, help="LM model hidden size")
+    parser.add_argument('--sentence_max_length', type=int, default=512,
                         help="sentence_max_length")
     parser.add_argument('--overwrite_output_dir', action='store_true',
                         help="Overwrite the content of the output directory")
@@ -329,7 +324,6 @@ def main():
         raise ValueError(
             "Output directory ({}) already exists and is not empty. Use --overwrite_output_dir to overcome.".format(
                 args.output_dir))
-    args.embed_dim = 768
     args.num_class = 1
     args.do_lower_case = True
     # Setup CUDA, GPU & distributed training
@@ -338,13 +332,13 @@ def main():
     args.n_gpu = torch.cuda.device_count()
     set_seed(args)  # Added here for reproductibility (even between python 2 and 3)
 
-
     # Load pre-trained model tokenizer (vocabulary)
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
     tokenizer = tokenizer_class.from_pretrained('bert-base-uncased', cache_dir=args.transformer_dir, do_lower_case=True,
-                                              do_basic_tokenize=True)
+                                                do_basic_tokenize=True)
     # Load pre-trained model (weights)
-    bertModel = model_class.from_pretrained('bert-base-uncased', cache_dir=args.transformer_dir, output_hidden_states=True)
+    bertModel = model_class.from_pretrained('bert-base-uncased', cache_dir=args.transformer_dir,
+                                            output_hidden_states=True)
 
     # paragraph_encoder = torch.nn.gru()
     # document_encoder = torch.nn.GRU(768, 300)
@@ -358,8 +352,19 @@ def main():
     model.to(args.device)
     if args.do_train:
         train(args, model, bertModel, tokenizer, criterion)
+        if not os.path.exists(args.output_dir):
+            os.makedirs(args.output_dir)
+            # If we have a distributed model, save only the encapsulated model
+            # (it was wrapped in PyTorch DistributedDataParallel or DataParallel)
+        logger.info("Saving model checkpoint to %s", args.output_dir)
+        model_to_save = model.module if hasattr(model, 'module') else model
+        # Good practice: save your training arguments together with the trained model
+        torch.save(args, os.path.join(args.output_dir, 'training_args.bin'))
+        # If we save using the predefined names, we can load using `from_pretrained`
+        output_model_file = os.path.join(args.output_dir, WEIGHTS_NAME)
+        torch.save(model_to_save.state_dict(), output_model_file)
+        print('Finished Training')
     # Evaluation
-    results = {}
     if args.do_eval and args.local_rank in [-1, 0]:
         checkpoints = [args.output_dir]
         if args.eval_all_checkpoints:
@@ -369,11 +374,13 @@ def main():
             logging.getLogger("transformers.modeling_utils").setLevel(logging.WARN)  # Reduce logging
         logger.info("Evaluate the following checkpoints: %s", checkpoints)
         for checkpoint in checkpoints:
+            print(checkpoint)
+            output_model_file = os.path.join(checkpoint, WEIGHTS_NAME)
+            model.load_state_dict(torch.load(output_model_file))
             evaluate(args, model, bertModel, tokenizer, criterion)
 
     print('end program')
     return
-
 
 
 if __name__ == '__main__':

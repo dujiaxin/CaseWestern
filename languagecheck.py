@@ -57,15 +57,10 @@ for root, dirs, files in os.walk(text_filepath, topdown=True):
         # read file content
         text = d2t.process(file)
         text_sentences = sentence_tokenizer.tokenize(text)
-        with open('test.txt', 'w+') as testf:
-            for sentence in text_sentences:
-                print(sentence)
-                tmp = language_check.correct(sentence, language_check_tool.check(sentence))
-                testf.write(tmp)
         out_lines = []
-        for line in text_lines:
-            words = line.split(' ')
-            retLine = ''
+        for sentence in text_sentences:
+            tmp = language_check.correct(sentence, language_check_tool.check(sentence))
+            out_lines.append(tmp)
         for line in out_lines:
             document.add_paragraph(line)
         document.save(cleaned_filepath + filename)

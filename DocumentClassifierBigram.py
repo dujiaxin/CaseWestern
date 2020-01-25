@@ -1,5 +1,5 @@
 import nltk
-from nltk.tokenize import word_tokenize,RegexpTokenizer
+from nltk.tokenize import word_tokenize, RegexpTokenizer
 import os
 import docx
 from tqdm import tqdm
@@ -7,17 +7,9 @@ import re
 from nltk.corpus import stopwords
 import json
 import random
-from nltk.stem.porter import PorterStemmer
-from FeatureClass import FeatureClass
-import pandas as pd
-import matplotlib.pyplot as plt
-import re
-import matplotlib
-import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.metrics import accuracy_score
 from sklearn.multiclass import OneVsRestClassifier
@@ -27,6 +19,22 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 import seaborn as sns
 from sklearn.metrics import classification_report
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
+
+import numpy as np
+
+def print_top10(vectorizer, clf, class_labels):
+    """Prints features with the highest coefficient values, per class"""
+    feature_names = vectorizer.get_feature_names()
+    for i, class_label in enumerate(class_labels):
+        if i == class_labels.shape[0]-1:#for liner svc
+            break
+        top10 = np.argsort(clf.coef_[i])[-10:]
+        print("%s: %s" % (class_label,
+              " ".join(feature_names[j] for j in top10)))
+
 
 def main():
     random.seed(0)
@@ -54,7 +62,7 @@ def main():
         custom_stopwords = set(f.read().splitlines())
     all_stopwords = default_stopwords | custom_stopwords
 
-    with open('catagories.csv', 'r', encoding='utf-8') as f:
+    with open('catagories_binary.csv', 'r', encoding='utf-8') as f:
         to_be_classified = list(f.read().splitlines())
     # with open(train_filepath, 'r', encoding='utf-8') as ft:
     #     train_data = json.load(ft)
@@ -65,29 +73,40 @@ def main():
     #         t.update({category : str(df_indexed.loc[t['rms']][category])})
 
     NB_pipeline = Pipeline([
-        ('tfidf', TfidfVectorizer(stop_words=all_stopwords)),
+        ('tfidf', TfidfVectorizer(stop_words=all_stopwords, ngram_range=(1, 2))),
         ('clf', OneVsRestClassifier(MultinomialNB(
             fit_prior=True, class_prior=None))),
     ])
     SVC_pipeline = Pipeline([
-        ('tfidf', TfidfVectorizer(stop_words=all_stopwords)),
+        ('tfidf', TfidfVectorizer(stop_words=all_stopwords,
+                                  ngram_range=(1, 2),
+                                  token_pattern=u'(?ui)\\b\\w*[a-zA-Z]+\\w*\\b'
+                                  )
+         ),
         ('clf', OneVsRestClassifier(LinearSVC(), n_jobs=1)),
     ])
     LogReg_pipeline = Pipeline([
         ('tfidf', TfidfVectorizer(stop_words=all_stopwords)),
         ('clf', OneVsRestClassifier(LogisticRegression(solver='sag'), n_jobs=1)),
     ])
-    train, test = train_test_split(train_data, random_state=0, test_size=0.33, shuffle=True)
-    X_train = train.document
-    X_test = test.document
+    # train, test = train_test_split(
+    #     train_data,
+    #     random_state=0, test_size=0.1, shuffle=True)
+    # X_train = train.document
+    # X_test = test.document
     for category in to_be_classified:
+        train, test = train_test_split(
+            train_data[train_data[category] != ' '],
+            random_state=0, test_size=0.1, shuffle=True)
+        X_train = train.document
+        X_test = test.document
         # train the model using X_dtm & y
-        NB_pipeline.fit(X_train, train[category])
+        SVC_pipeline.fit(X_train, train[category])
         # compute the testing accuracy
-        prediction = NB_pipeline.predict(X_test)
+        prediction = SVC_pipeline.predict(X_test)
         print(category + ',' + str(accuracy_score(test[category], prediction)))
+        # print_top10(SVC_pipeline.steps[0][1], SVC_pipeline.steps[1][1], SVC_pipeline.classes_)
     return 0
-
 
 
 if __name__ == '__main__':

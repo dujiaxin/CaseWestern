@@ -14,7 +14,7 @@ import torch
 import torchtext.vocab as vocab
 import os
 import matplotlib.colors as mcolors
-
+import json
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 
@@ -31,6 +31,7 @@ class Question2vec():
         pass
 
     def get_word(self, word):
+        word = word.lower()
         if word in self.glove.stoi.keys():
             return self.glove.vectors[self.glove.stoi[word]]
         else:
@@ -80,6 +81,8 @@ class Question2vec():
         for word in filtered_sentence:
             vec = self.get_word(word)
             vec_arr.append(vec)
+        if vec_arr == []:
+            return torch.zeros(300)
         sentence_vec = torch.mean(torch.stack(vec_arr), dim=0)
         # print(sentence_vec[0:20])
         return sentence_vec
@@ -145,16 +148,13 @@ if __name__ == '__main__':
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
     short_questions = []
-    with open(BASE_DIR + '/data/short_question.txt', 'r') as f:
-        for line in f.readlines():
-            l = line.strip()  # delete "\n"
-            short_questions.append(l)
+    with open('./train_sak_geo.json', 'r') as f:
+        trainfile = json.load(f)
+        for line in trainfile:
+            paras = line['document'].split('\n')
+            for l in paras:
+                short_questions.append(l)
 
-    long_questions = []
-    with open(BASE_DIR + '/data/long_question.txt', 'r') as f:
-        for line in f.readlines():
-            l = line.strip()  # delete "\n"
-            long_questions.append(l)
 
     similarities = []
 
@@ -170,6 +170,8 @@ if __name__ == '__main__':
     short_vec_arr = []
     for i in range(len(short_questions)):
         short_q = short_questions[i]
+        if len(short_q) < 2:
+            continue
         short_vec = q2v.get_sentence_vec(short_q)
         short_vec_arr.append(list(short_vec))
 

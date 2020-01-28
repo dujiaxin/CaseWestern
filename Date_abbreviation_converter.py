@@ -124,7 +124,7 @@ for i in tqdm(reports):
     df2 = pd.DataFrame(full_name, columns =['Original', 'Modified', 'Sentence','RMS'], dtype = str)
     # df = df1.append(df2)
     df_all_date = df_all_date.append(df1)
-    df_all = df_all.append(df1)
+    df_all = df_all.append(df2)
     # print(*date, sep = "\n")
     # print(*full_name, sep = "\n")
     # print('##############################:',i)

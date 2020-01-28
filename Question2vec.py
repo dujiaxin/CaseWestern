@@ -13,7 +13,7 @@ from nltk.tokenize import RegexpTokenizer
 import torch
 import torchtext.vocab as vocab
 import os
-# import pandas as pd
+import matplotlib.colors as mcolors
 
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
@@ -90,15 +90,22 @@ class My_show():
     def __init__(self, points, labels, colors):
         x = points[:, 0]
         y = points[:, 1]
+        num_colors = 10
+
         self.names = labels
 
         self.c = colors
 
-        self.norm = plt.Normalize(1, 4)
-        self.cmap = plt.cm.RdYlGn
+        self.norm = plt.Normalize(1, num_colors)
+
+        # TABLEAU_COLORS has 100 different colors, see:
+        # https://matplotlib.org/3.1.0/gallery/color/named_colors.html
+
+        lcmap = mcolors.ListedColormap(mcolors.TABLEAU_COLORS)
+        self.cmap = lcmap
 
         self.fig, self.ax = plt.subplots()
-        self.sc = plt.scatter(x, y, c=self.c, s=100, cmap=self.cmap, norm=self.norm)
+        self.sc = plt.scatter(x, y, c=self.c, vmin=0, vmax=num_colors, s=100, cmap=self.cmap, norm=self.norm)
 
         self.annot = self.ax.annotate("", xy=(0, 0), xytext=(20, 20), textcoords="offset points",
                             bbox=dict(boxstyle="round", fc="w"),
@@ -110,7 +117,7 @@ class My_show():
         self.annot.xy = pos
         # text = "{}, {}".format(" ".join(list(map(str,ind["ind"]))),
         #                        " ".join([self.names[n] for n in ind["ind"]]))
-        text = " ".join([self.names[n] for n in ind["ind"]])
+        text = "\n".join([self.names[n] for n in ind["ind"]])
 
         self.annot.set_text(text)
         self.annot.get_bbox_patch().set_facecolor(self.cmap(self.norm(self.c[ind["ind"][0]])))
@@ -131,19 +138,20 @@ class My_show():
 
     def show(self):
         self.fig.canvas.mpl_connect("motion_notify_event", self.hover)
+        plt.colorbar()
         plt.show()
 
 if __name__ == '__main__':
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
     short_questions = []
-    with open(BASE_DIR + '/data/short_question.txt', 'r', encoding='utf-8') as f:
+    with open(BASE_DIR + '/data/short_question.txt', 'r') as f:
         for line in f.readlines():
             l = line.strip()  # delete "\n"
             short_questions.append(l)
 
     long_questions = []
-    with open(BASE_DIR + '/data/long_question.txt', 'r', encoding='utf-8') as f:
+    with open(BASE_DIR + '/data/long_question.txt', 'r') as f:
         for line in f.readlines():
             l = line.strip()  # delete "\n"
             long_questions.append(l)
@@ -188,7 +196,11 @@ if __name__ == '__main__':
     # plt.show()
 
     """ Kmeans """
-    y_pred = KMeans(n_clusters=10, random_state=9).fit_predict(X)
+    y_pred = KMeans(n_clusters=10, random_state=9).fit_predict(short_vec_arr)
+
+    # data = {'short_question':short_questions, 'classification':y_pred}
+    # df = pd.DataFrame(data)
+    # df.to_csv(BASE_DIR + '/data/question_classification.csv', index=False, quoting=1)
 
     """ show all the points """
     # plt.scatter(X[:, 0], X[:, 1], c=y_pred)
@@ -197,9 +209,3 @@ if __name__ == '__main__':
     """ show points with colors and labels """
     my = My_show(X, short_questions, y_pred)
     my.show()
-
-
-
-
-
-

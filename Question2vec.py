@@ -1,74 +1,52 @@
-# -*- coding: utf-8 -*-
 """
-author: Wenbo
-Dec 25, 2019
+Use tf-idf to vectorize questions
+Wenbo
+Jan 26, 2020
 """
-
 import nltk
 # nltk.download('stopwords')
 # nltk.download('punkt')
 from nltk.corpus import stopwords
 from nltk.tokenize import RegexpTokenizer
+
+import nltk.tokenize as tk
+import sklearn.feature_extraction.text as ft
+
 # from nltk.tokenize import word_tokenize
 import torch
 import torchtext.vocab as vocab
 import os
 import matplotlib.colors as mcolors
-import json
+
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
+# import time
+# from datetime import datetime
+import json
+import re
 
 import matplotlib.pyplot as plt
-# import mpld3
+import pandas as pd
 
-# print(set(stopwords.words('english')))
+
 
 class Question2vec():
     def __init__(self):
-        self.glove = vocab.GloVe(name='840B', dim=300)
         self.stop_words = set(stopwords.words('english'))
-        print('Loaded {} words'.format(len(self.glove.itos)))
         pass
 
-    def get_word(self, word):
-        word = word.lower()
-        if word in self.glove.stoi.keys():
-            return self.glove.vectors[self.glove.stoi[word]]
+    def filter_sentence(self, sentence, is_stop_words=False):
+        if is_stop_words:
+            stop_words = self.stop_words
         else:
-            print("*** no this key:", word)
-            # TODO : fix OOV problem
-            return self.glove.vectors[self.glove.stoi['unknown']]
+            stop_words = []
 
-    def closest(self, vec, n=10):
-        """
-        Find the closest words for a given vector
-        """
-        all_dists = [(w, torch.dist(vec, self.get_word(w))) for w in self.glove.itos]
-        return sorted(all_dists, key=lambda t: t[1])[:n]
-
-    def print_tuples(self, tuples):
-        for tuple in tuples:
-            print('(%.4f) %s' % (tuple[1], tuple[0]))
-
-    # In the form w1 : w2 :: w3 : ?
-    def analogy(self, w1, w2, w3, n=5, filter_given=True):
-        print('\n[%s : %s :: %s : ?]' % (w1, w2, w3))
-
-        # w2 - w1 + w3 = w4
-        closest_words = self.closest(self.get_word(w2) - self.get_word(w1) + self.get_word(w3))
-
-        # Optionally filter out given words
-        if filter_given:
-            closest_words = [t for t in closest_words if t[0] not in [w1, w2, w3]]
-
-        self.print_tuples(closest_words[:n])
-
-    def filter_sentence(self, sentence, stop_words):
+        sentence = sentence.lower()
         tokenizer = RegexpTokenizer(r'\w+')
         word_tokens = tokenizer.tokenize(sentence)
         # word_tokens = word_tokenize(sentence)
         filtered_sentence = [w for w in word_tokens if not w in stop_words]
-        return filtered_sentence
+        return " ".join(filtered_sentence)
 
     def get_sentence_vec(self, sentence, is_stop_words=True):
         if is_stop_words:
@@ -76,13 +54,12 @@ class Question2vec():
         else:
             stop_words = []
 
-        filtered_sentence = self.filter_sentence(sentence, stop_words)
+        filtered_sentence = self.filter_sentence(sentence.lower(), stop_words)
+        # print(filtered_sentence)
         vec_arr = []
         for word in filtered_sentence:
             vec = self.get_word(word)
             vec_arr.append(vec)
-        if vec_arr == []:
-            return torch.zeros(300)
         sentence_vec = torch.mean(torch.stack(vec_arr), dim=0)
         # print(sentence_vec[0:20])
         return sentence_vec
@@ -90,7 +67,7 @@ class Question2vec():
 
 
 class My_show():
-    def __init__(self, points, labels, colors):
+    def __init__(self, points, labels, colors, title = "Figure"):
         x = points[:, 0]
         y = points[:, 1]
         num_colors = 10
@@ -98,6 +75,7 @@ class My_show():
         self.names = labels
 
         self.c = colors
+        self.title = title
 
         self.norm = plt.Normalize(1, num_colors)
 
@@ -140,74 +118,56 @@ class My_show():
                     self.fig.canvas.draw_idle()
 
     def show(self):
+        plt.title(self.title)
         self.fig.canvas.mpl_connect("motion_notify_event", self.hover)
         plt.colorbar()
         plt.show()
 
+
+def get_questions(filepath):
+    questions = []
+    with open(filepath, 'r') as f:
+        for line in f.readlines():
+            l = line.strip()  # delete "\n"
+            questions.append(l)
+    return questions
+
+
 if __name__ == '__main__':
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-    short_questions = []
+    questions = []
     with open('./train_sak_geo.json', 'r') as f:
         trainfile = json.load(f)
         for line in trainfile:
             paras = line['document'].split('\n')
             for l in paras:
-                short_questions.append(l)
-
-
-    similarities = []
-
+                questions.append(l)
     q2v = Question2vec()
 
-    # test1 = "This is a sample sentence, showing off the stop words filtration."
-    # test2 = "This is a easy sentence, showing off the stop words filtration."
-    # vec1 = q2v.get_sentence_vec(test1)
-    # vec2 = q2v.get_sentence_vec(test2)
-    # similarity = torch.cosine_similarity(vec1, vec2, 0)
-    # print("test similarity:", similarity)
+    filtered_questions = []
+    for q in questions:
+        filtered = q2v.filter_sentence(q, is_stop_words=True)
+        filtered_questions.append(filtered)
 
-    short_vec_arr = []
-    for i in range(len(short_questions)):
-        short_q = short_questions[i]
-        if len(short_q) < 2:
-            continue
-        short_vec = q2v.get_sentence_vec(short_q)
-        short_vec_arr.append(list(short_vec))
+    # print(filtered_questions[:20])
+    cv = ft.TfidfVectorizer()
+    tfmat = cv.fit_transform(filtered_questions).toarray()
+    words = cv.get_feature_names()
+    print("len(words):", len(words))
 
-        # long_q = long_questions[i]
-        # long_vec = q2v.get_sentence_vec(long_q)
+    # for t in tfmat[:30]:
+    #     print(list(t))
 
-        # similarity = float(torch.cosine_similarity(short_vec, long_vec, 0))
-        # print(i, similarity)
-        # print(short_q)
-        # print(long_q)
-        # print()
-        # similarities.append(similarity)
-
-    # data = {'short_question':short_questions, 'long_question':long_questions, 'similarity': similarities}
-    # df = pd.DataFrame(data)
-    # df.to_csv(BASE_DIR + '/data/question_similarity.csv', index=False, quoting=1)
-
+    """ dimension reduction """
     pca = PCA(n_components=2)
-    pca.fit(short_vec_arr)
-    X = pca.transform(short_vec_arr)
-
-    """ show the results of dimension reduction """
-    # plt.scatter(X[:, 0], X[:, 1], marker='o')
-    # plt.show()
+    pca.fit(tfmat)
+    X = pca.transform(tfmat)
 
     """ Kmeans """
-    y_pred = KMeans(n_clusters=10, random_state=9).fit_predict(short_vec_arr)
-
-    # data = {'short_question':short_questions, 'classification':y_pred}
-    # df = pd.DataFrame(data)
-    # df.to_csv(BASE_DIR + '/data/question_classification.csv', index=False, quoting=1)
-
-    """ show all the points """
-    # plt.scatter(X[:, 0], X[:, 1], c=y_pred)
-    # plt.show()
+    y_pred = KMeans(n_clusters=10, random_state=9).fit_predict(X)
 
     """ show points with colors and labels """
-    my = My_show(X, short_questions, y_pred)
+    my = My_show(X, questions, y_pred, "Journalistic Questions(tfidf, no stop words)")
     my.show()
+    short_questions = []
+

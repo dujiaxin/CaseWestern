@@ -30,6 +30,7 @@ check = []
 
 text_filepath = 'C:/Users/Matt/Documents/Data Science/CW/BATCH_3/'
 root_cleaned_filepath = 'C:/Users/Matt/Documents/Data Science/CW/CLEANED_3/'
+error_report_filepath = 'C:/Users/Matt/Documents/Data Science/CW/extraction_errors.txt'
 if not os.path.exists(root_cleaned_filepath):
     os.makedirs(root_cleaned_filepath)
 
@@ -124,8 +125,8 @@ for root, dirs, files in os.walk(text_filepath,topdown=True):
             except AssertionError as e:
                 print('folder: ' + str(folder) + '; file: ' + filename)
                 exit(1)
-
 try:
+    errFil = open(error_report_filepath, "a")
     '''start system walk to process files'''
     for root, dirs, files in os.walk(text_filepath,topdown=True):
         '''to skip first loop, since first loop check the current dir but we want to dive into each sub-folder'''
@@ -227,13 +228,17 @@ try:
                 matter_id_array.append(matter_id)
                 rms_array.append(rms)
                 check.append(0)
-                print(str(folder)+": "+filename +": "+ str(filename_array)+": "+str(start_pointers)+" NO TITLE CONDITION MEET!")
+                err_txt = text_filepath[-8:-1] + ' ' + str(folder) + ': ' + filename + ': ' + str(filename_array) + ': ' + str(start_pointers) + ' NO TITLE CONDITION MEET!'
+                print(err_txt)
+                errFil.write(err_txt + '\n')
                 continue
             elif len(start_pointers) > 1:
                 matter_id_array.append(matter_id)
                 rms_array.append(rms)
                 check.append(0)
-                print(str(folder)+": "+filename +": "+ str(filename_array)+": "+str(start_pointers)+" "+str(len(start_pointers))+" TITLE CONDITION MEET!")
+                err_txt = text_filepath[-8:-1] + ' ' + str(folder) + ': ' + filename + ': ' + str(filename_array) + ': ' + str(start_pointers) + ' ' + str(len(start_pointers)) + ' TITLE CONDITION MEET!'
+                print(err_txt)
+                errFil.write(err_txt+ '\n')
                 continue
 
 
@@ -336,6 +341,7 @@ try:
 
     process_tracked.to_csv(root_cleaned_filepath+"document_process.csv")
     print("Finished!")
+    errFil.close()
 except:
         extype, value, tb = sys.exc_info()
         traceback.print_exc()

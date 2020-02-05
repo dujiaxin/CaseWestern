@@ -32,7 +32,12 @@ import pandas as pd
 
 class Question2vec():
     def __init__(self):
-        self.stop_words = set(stopwords.words('english'))
+        stopwords_file = './stopwords.txt'
+        default_stopwords = set(nltk.corpus.stopwords.words('english'))
+        with open(stopwords_file, 'r', encoding='utf-8') as f:
+            custom_stopwords = set(f.read().splitlines())
+        self.stop_words = default_stopwords | custom_stopwords
+        # self.stop_words = set(stopwords.words('english'))
         pass
 
     def filter_sentence(self, sentence, is_stop_words=False):
@@ -136,22 +141,36 @@ def get_questions(filepath):
 if __name__ == '__main__':
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     questions = []
-    with open('./train_sak_geo.json', 'r') as f:
-        trainfile = json.load(f)
-        for line in trainfile:
-            paras = line['document'].split('\n')
-            for l in paras:
-                questions.append(l)
-    q2v = Question2vec()
 
-    filtered_questions = []
-    for q in questions:
-        filtered = q2v.filter_sentence(q, is_stop_words=True)
-        filtered_questions.append(filtered)
+    trainfile = json.loads(pd.read_csv('./train_sak_geo.csv').to_json(orient='records'))
+
+    q2v = Question2vec()
+    good_results = []
+    bad_results = []
+    ycolor = []
+    for q in trainfile:
+        # if q['ReasonGiven_Closing_recoded'] in ['5','9','12']:
+        if q['success_outcome'] == 1:
+            # paras = q['document'].split('\n')
+            bad_results.append(q2v.filter_sentence(q['document'], is_stop_words=True))
+            ycolor.append(1)
+            # for p in paras:
+            #     bad_results.append(q2v.filter_sentence(q['document'], is_stop_words=True))
+            #     questions.append(p)
+
+        elif q['success_outcome'] == 0:
+            # paras = q['document'].split('\n')
+            bad_results.append(q2v.filter_sentence(q['document'], is_stop_words=True))
+            ycolor.append(0)
+            # for p in paras:
+            #     bad_results.append(q2v.filter_sentence(p, is_stop_words=True))
+            #     questions.append(p)
+
 
     # print(filtered_questions[:20])
     cv = ft.TfidfVectorizer()
-    tfmat = cv.fit_transform(filtered_questions).toarray()
+    # tf_good_mat = cv.fit_transform(good_results).toarray()
+    tf_bad_mat = cv.fit_transform(bad_results).toarray()
     words = cv.get_feature_names()
     print("len(words):", len(words))
 
@@ -160,14 +179,14 @@ if __name__ == '__main__':
 
     """ dimension reduction """
     pca = PCA(n_components=2)
-    pca.fit(tfmat)
-    X = pca.transform(tfmat)
+    pca.fit(tf_bad_mat)
+    X = pca.transform(tf_bad_mat)
 
     """ Kmeans """
     y_pred = KMeans(n_clusters=10, random_state=9).fit_predict(X)
 
     """ show points with colors and labels """
-    my = My_show(X, questions, y_pred, "Journalistic Questions(tfidf, no stop words)")
+    my = My_show(X, ycolor, ycolor, "Paragraph tf-idf features")
     my.show()
     short_questions = []
 

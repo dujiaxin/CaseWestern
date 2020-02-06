@@ -3,17 +3,37 @@ import numpy as np
 import statsmodels.api as sm
 from sklearn.feature_selection import RFE
 from sklearn.linear_model import LogisticRegression
-
+import json
 
 def histogram_intersection(a, b):
     v = np.minimum(a, b).sum().round(decimals=1)
     return v
 
 
+def correlation(dataset, threshold):
+    col_corr = set() # Set of all the names of deleted columns
+    corr_matrix = dataset.corr()
+    for i in range(len(corr_matrix.columns)):
+        for j in range(i):
+            if (corr_matrix.iloc[i, j] >= threshold) and (corr_matrix.columns[j] not in col_corr):
+                colname = corr_matrix.columns[i] # getting the name of column
+                col_corr.add(colname)
+                if colname in dataset.columns:
+                    del dataset[colname] # deleting the column from the dataset
+    return dataset
+
 def main():
     train_data = pd.read_csv('./train_sak_geo.csv').astype(str)
+    # with open('./Prev_disposed_convicted_matterid_rms.csv', 'r', encoding='utf-8') as f:
+    #     goodrms = f.read().splitlines()
     # train_data['success_outcome'] = 0
-    #
+    # j = json.loads(train_data.to_json(orient='records'))
+    # for jj in j:
+    #     if jj['rms'] in goodrms:
+    #         jj['success_outcome'] = 1
+    #     else:
+    #         jj['success_outcome'] = 0
+    # train_data = pd.DataFrame.from_records(j)
     # train_data.loc[train_data['Disposition'] != ' ', 'success_outcome'] = 1
     # train_data.loc[train_data['Jurisdiction_Prosecutor'] != ' ', 'success_outcome'] = 1
     # train_data.loc[train_data['Grand_Jury_ever'] == '1', 'success_outcome'] = 1
@@ -42,7 +62,7 @@ def main():
         df.loc[df[category] == '-999', category] = np.nan
         df.loc[df[category] == '999', category] = np.nan
         df.loc[df[category] == ' ', category] = np.nan
-    df = df.dropna()
+    df = df.astype(float).dropna()
     print(df.corr(method='spearman'))
     x = df.drop(columns=['success_outcome'])
     # x = df.drop(columns=['credibility_issue_exist'])

@@ -31,6 +31,9 @@ docFilePath = 'C:/Users/Matt/Documents/Data Science/CW/CLEANED_2/10/M510--7730_R
 stopwords = stopwords.words('english') + blacklist_words + [punc for punc in string.punctuation]
 original_corpus = []
 
+def my_tfidf_color_func(word, font_size, position, orientation, random_state=None, **kwargs):
+    return 'hsl(%d, 80%%, 50%%)' % (360 * kwargs[freqDict][word])
+
 def hasNumbers(inp):
     for char in inp:
         if char.isdigit():
@@ -136,4 +139,13 @@ def main():
         buildIdfInfo(idfDirPath)
     tfDict = buildExtractTfInfo(docFilePath)
     idfDict = extractIdfInfo(wordCountFilePath, tfDict)
-    
+    tfidfDict = {}
+    for k in tfDict:
+        tfidfDict[k] = tfDict[k] * idfDict[k]
+    wc = WordCloud(
+        background_color='white',
+        max_words = 100,
+        width=1024,
+        height=720
+    ).generate_from_frequencies(tfDict)
+    wc.recolor(color_func=my_tfidf_color_func(freqDict=tfidfDict))

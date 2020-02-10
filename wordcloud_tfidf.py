@@ -1,4 +1,5 @@
 import os
+from os import path
 import csv
 import string
 import nltk
@@ -23,6 +24,9 @@ blacklist_words = [
     '``',
     "'s"
 ]
+idfDirPath = 'C:/Users/Matt/Documents/Data Science/CW/CLEANED_2'
+wordCountFilePath = 'C:/Users/Matt/Documents/GitHub/CaseWestern/wc_wordCountDict.csv'
+docFilePath = 'C:/Users/Matt/Documents/Data Science/CW/CLEANED_2/10/M510--7730_RMS94-13457.docx'
 # irrelevant or overused words
 stopwords = stopwords.words('english') + blacklist_words + [punc for punc in string.punctuation]
 original_corpus = []
@@ -98,7 +102,7 @@ def extractIdfInfo(filePath, tfDict):
     return idfDict
 
 
-def buildTfInfo(filePath):
+def buildExtractTfInfo(filePath):
     # word : [number of times appearing in file]
     freqDict = {}
     # read file content
@@ -128,4 +132,8 @@ def buildTfInfo(filePath):
     return tfDict
 
 def main():
+    if not path.exists(wordCountFilePath):
+        buildIdfInfo(idfDirPath)
+    tfDict = buildExtractTfInfo(docFilePath)
+    idfDict = extractIdfInfo(wordCountFilePath, tfDict)
     

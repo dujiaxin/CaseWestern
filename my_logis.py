@@ -36,18 +36,14 @@ if __name__ == '__main__':
             to_explain.remove(elem)
 
     df = train_data[to_explain]
-    df = df.replace(' ',np.nan)
-    df = df.replace(-999,np.nan)
-    df = df.replace(999,np.nan)
-    df = df.dropna()
+
 
     #df.info()
-    values = df.values.tolist()
-    for i in range(len(values)):
-        values[i] = list(np.float_(values[i]))
-    df = pd.DataFrame(values,columns=to_explain)
+    df = df.astype(float)
     df_T = pd.DataFrame(values,columns=to_explain)
     # print(df.info()) # CONVERT DATAFRAME TO NON-NULL FLOAT DATAFRAME
+    df = df.replace(' ',np.nan)
+    df = df.replace(-999,np.nan)
     df = df.replace(999,np.nan)
     df = df.dropna()
 

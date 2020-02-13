@@ -131,7 +131,7 @@ def train(args, model, bertModel, tokenizer, criterion):
             # get the inputs; data is a list of [inputs, labels]
             # inputs = data['document'].replace('\n', ' ').lower().split('.')
             inputs = split_sentence(data['document'])
-            if data['credible_issue']:
+            if data['credibility_issue_exist']:
                 label = 1
             else:
                 label = 0
@@ -212,7 +212,7 @@ def evaluate(args, model, bertModel, tokenizer, criterion):
         # get the inputs; data is a list of [inputs, labels]
         # inputs = data['document'].replace('\n', ' ').lower().split('.')
         inputs = split_sentence(data['document'])
-        if data['credible_issue']:
+        if data['credibility_issue_exist']:
             label = 1
         else:
             label = 0
@@ -221,7 +221,7 @@ def evaluate(args, model, bertModel, tokenizer, criterion):
         with torch.no_grad():  # When embedding the sentence use BERT, we don't train the model.
             for ii, sentence in enumerate(inputs, 2):
                 if len(sentence) < 3:
-                    # print(sentence)
+                    print(sentence)
                     continue
                 elif len(sentence) > args.sentence_max_length:
                     print(data['rms'])

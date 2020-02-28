@@ -3,6 +3,7 @@ from os import path
 import csv
 import string
 import nltk
+from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem.porter import PorterStemmer
 from wordcloud import WordCloud
@@ -24,6 +25,7 @@ blacklist_words = [
     '``',
     "'s"
 ]
+
 # TEST_SAMPLE is a dir that only contains a dir named CLEANED_2
 # CLEANED_2 only contains a dir named 14
 # which only contains 30 .docx police reports that have been extracted and cleaned
@@ -33,6 +35,8 @@ docFilePath = 'C:/Users/Matt/Documents/Data Science/CW/TEST_SAMPLE/CLEANED_2/14/
 # irrelevant or overused words
 stopwords = stopwords.words('english') + blacklist_words + [punc for punc in string.punctuation]
 original_corpus = []
+
+print("imported, inited, and now defining methods")
 
 def my_tfidf_color_func(word, font_size, position, orientation, random_state=None, **kwargs):
     return 'hsl(%d, 80%%, 50%%)' % (360 * kwargs[freqDict][word])
@@ -72,12 +76,8 @@ def buildIdfInfo(dirPath):
             # original_corpus is used to for the actual words within wordcloud
             # unsure if below line is needed here
             #original_corpus.append(tokens)
-            for i in range(len(tokens - 1)):
-                if hasNumbers(tokens[i]):
-                    tokens.pop(i)
-                    continue
-                if tokens[i] in stopwords:
-                    tokens.pop(i)
+            for i in range(len(tokens) - 1):
+                if hasNumbers(tokens[i]) or tokens[i] in stopwords:
                     continue
                 if tokens[i] not in freqDict.keys():
                     freqDict[tokens[i]] = [1, False]
@@ -119,7 +119,7 @@ def buildExtractTfInfo(filePath):
     wordcount = len(tokens)
     # add tokens to original_corpus, used to create wordcloud
     original_corpus.append(tokens)
-    for i in range(len(tokens - 1)):
+    for i in range(len(tokens) - 1):
         if hasNumbers(tokens[i]):
             tokens.pop(i)
             continue
@@ -138,6 +138,7 @@ def buildExtractTfInfo(filePath):
     return tfDict
 
 def main():
+    print("in main()")
     if not path.exists(wordCountFilePath):
         buildIdfInfo(idfDirPath)
     tfDict = buildExtractTfInfo(docFilePath)
@@ -151,4 +152,6 @@ def main():
         width=1024,
         height=720
     ).generate_from_frequencies(tfDict)
-    wc.recolor(color_func=my_tfidf_color_func(freqDict=tfidfDict))
+    wc.recolor(color_func=my_tfidf_color_func(freqDict=tfidfDict))\
+
+main()

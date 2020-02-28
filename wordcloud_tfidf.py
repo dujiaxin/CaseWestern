@@ -24,9 +24,12 @@ blacklist_words = [
     '``',
     "'s"
 ]
-idfDirPath = 'C:/Users/Matt/Documents/Data Science/CW/CLEANED_2'
+# TEST_SAMPLE is a dir that only contains a dir named CLEANED_2
+# CLEANED_2 only contains a dir named 14
+# which only contains 30 .docx police reports that have been extracted and cleaned
+idfDirPath = 'C:/Users/Matt/Documents/Data Science/CW/TEST_SAMPLE/CLEANED_2'
 wordCountFilePath = 'C:/Users/Matt/Documents/GitHub/CaseWestern/wc_wordCountDict.csv'
-docFilePath = 'C:/Users/Matt/Documents/Data Science/CW/CLEANED_2/10/M510--7730_RMS94-13457.docx'
+docFilePath = 'C:/Users/Matt/Documents/Data Science/CW/TEST_SAMPLE/CLEANED_2/14/M518--3338_RMS98-67176.docx'
 # irrelevant or overused words
 stopwords = stopwords.words('english') + blacklist_words + [punc for punc in string.punctuation]
 original_corpus = []

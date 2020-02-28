@@ -63,6 +63,8 @@ def buildIdfInfo(dirPath):
                 folder = direc
                 break
         # iterating over files in this dir
+        # WARNING: will cause error if one of the files is open in Microsoft Word
+        # this is due to the lock file being created while a .docx is open
         for filename in tqdm(files):
             if filename in blacklist:
                 continue
@@ -86,9 +88,12 @@ def buildIdfInfo(dirPath):
                         freqDict[tokens[i]][0] += 1
             del text
             del tokens
-    with open('wc_wordCountDict.csv', 'w', encoding='utf-8') as fileDict:
+            # resetting the boolean that determines whether or not a word has yet been seen in the document
+            for value in freqDict.values():
+                value[1] = True
+    with open('wc_wordCountDict.csv', 'w', newline='', encoding='utf-8') as fileDict:
         fileDictWriter = csv.writer(fileDict)
-        fileDictWriter.writerow(str(filecount))
+        fileDictWriter.writerow(["file count:", str(filecount)])
         for key, value in freqDict.items():
             fileDictWriter.writerow([key, str(value[0])])
 
@@ -112,7 +117,7 @@ def buildExtractTfInfo(filePath):
     # word : [number of times appearing in file]
     freqDict = {}
     # read file content
-    text = d2t.process(file)
+    text = d2t.process(filePath)
     text = text.lower()
     # extract tokens from text
     tokens = word_tokenize(text)
@@ -120,11 +125,7 @@ def buildExtractTfInfo(filePath):
     # add tokens to original_corpus, used to create wordcloud
     original_corpus.append(tokens)
     for i in range(len(tokens) - 1):
-        if hasNumbers(tokens[i]):
-            tokens.pop(i)
-            continue
-        if tokens[i] in stopwords:
-            tokens.pop(i)
+        if hasNumbers(tokens[i]) or tokens[i] in stopwords:
             continue
         if tokens[i] not in freqDict.keys():
             freqDict[tokens[i]] = 1
@@ -140,12 +141,19 @@ def buildExtractTfInfo(filePath):
 def main():
     print("in main()")
     if not path.exists(wordCountFilePath):
+        print("word count per file csv file NOT FOUND, building idf info")
         buildIdfInfo(idfDirPath)
+    else:
+        print("word count per file csv file found, will extract idf info")
+    print("building and extracting tf info for document selected")
     tfDict = buildExtractTfInfo(docFilePath)
+    print("extracting idf info")
     idfDict = extractIdfInfo(wordCountFilePath, tfDict)
     tfidfDict = {}
+    print("calculating tfidf values")
     for k in tfDict:
         tfidfDict[k] = tfDict[k] * idfDict[k]
+    print("creating wordcloud")
     wc = WordCloud(
         background_color='white',
         max_words = 100,

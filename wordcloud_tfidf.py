@@ -105,7 +105,7 @@ def extractIdfInfo(filePath, tfDict):
         first = True
         for row in fileDictReader:
             if first:
-                wordcount = int(row[0])
+                wordcount = int(row[1])
                 first = False
                 continue
             if row[0] in tfDict.keys():

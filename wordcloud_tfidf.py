@@ -7,7 +7,7 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem.porter import PorterStemmer
 from wordcloud import WordCloud, get_single_color_func
-from matplotlib import cm
+from matplotlib import cm, colors
 import docx2txt as d2t
 from tqdm import tqdm
 
@@ -238,6 +238,20 @@ def main():
     for k in tfDict:
         tfidfDict[k] = tfDict[k] * idfDict[k]
     print("creating wordcloud")
+    print(cm.viridis(0))
+    print(tfidfDict)
+    max = 0
+    min = 99999
+    for value in tfidfDict.values():
+        if value > max:
+            max = value
+        if value < min:
+            min = value
+    delta = (max - min)/256
+    for key, value in tfidfDict.values():
+        if key not in color_to_words.keys():
+            idx = (value - min) // delta
+            color_to_words[key] = colors.to_hex(cm.viridis(idx))
     wc = WordCloud(
         background_color='white',
         max_words = 100,
@@ -254,11 +268,13 @@ def main():
 
     # Create a color function with single tone
     # grouped_color_func = SimpleGroupedColorFunc(color_to_words, default_color)
+    grouped_color_func = SimpleGroupedColorFunc(color_to_words, default_color)
 
     # Create a color function with multiple tones
     # grouped_color_func = GroupedColorFunc(color_to_words, default_color)
 
     # Apply our color function
     # wc.recolor(color_func=grouped_color_func)
+    wc.recolor(color_func=grouped_color_func)
 
 main()

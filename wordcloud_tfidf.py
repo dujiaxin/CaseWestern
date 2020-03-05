@@ -28,6 +28,10 @@ blacklist_words = [
     "'s"
 ]
 
+# tfidf dictionary declared globally so that it may be reached by the recolor method
+# which relies on it to color the words
+tfidfDict = {}
+
 # TEST_SAMPLE is a dir that only contains a dir named CLEANED_2
 # CLEANED_2 only contains a dir named 14
 # which only contains 30 .docx police reports that have been extracted and cleaned
@@ -47,7 +51,7 @@ print("imported, inited, and now defining methods")
 
 # color function that changes colors of wordcloud depending on the tfidf of the word
 def my_tfidf_color_func(word, font_size, position, orientation, random_state=None, **kwargs):
-    return 'hsl(%d, 80%%, 50%%)' % (360 * kwargs[freqDict][word])
+    return 'hsl(%d, 80%%, 50%%)' % (360 * tfidfDict[word])
 
 # simple function that determines whether or not numbers exist in a string, causing it to return a boolean value
 def hasNumbers(inp):
@@ -164,6 +168,8 @@ def buildExtractTfInfo(filePath):
 # create wordcloud
 # recolor wordcloud <- current problem
 def main():
+    # use the dictionary that was declared globally to determine colors of words
+    global tfidfDict
     print("in main()")
     if not path.exists(wordCountFilePath):
         print("word count per file csv file NOT FOUND, building idf info")
@@ -174,7 +180,6 @@ def main():
     tfDict = buildExtractTfInfo(docFilePath)
     print("extracting idf info")
     idfDict = extractIdfInfo(wordCountFilePath, tfDict)
-    tfidfDict = {}
     print("calculating tfidf values")
     for k in tfDict:
         tfidfDict[k] = tfDict[k] * idfDict[k]
@@ -186,6 +191,9 @@ def main():
         height=720
     ).generate_from_frequencies(tfDict)
     # TypeError: my_tfidf_color_func() missing 4 required positional arguments: 'word', 'font_size', 'position', and 'orientation'
-    wc.recolor(color_func=my_tfidf_color_func(freqDict=tfidfDict))\
+    # color_func=lambda *args, **kwargs: (255,0,0) should work as a color function
+    # it would make the wordcloud entirely red
+
+    wc.recolor(color_func=my_tfidf_color_func, random_state=3)
 
 main()

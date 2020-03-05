@@ -8,6 +8,7 @@ from nltk.tokenize import word_tokenize
 from nltk.stem.porter import PorterStemmer
 from wordcloud import WordCloud, get_single_color_func
 from matplotlib import cm, colors
+import matplotlib.pyplot as plt
 import docx2txt as d2t
 from tqdm import tqdm
 
@@ -238,8 +239,7 @@ def main():
     for k in tfDict:
         tfidfDict[k] = tfDict[k] * idfDict[k]
     print("creating wordcloud")
-    print(cm.viridis(0))
-    print(tfidfDict)
+    # find the min and max tfidf value
     max = 0
     min = 99999
     for value in tfidfDict.values():
@@ -247,11 +247,17 @@ def main():
             max = value
         if value < min:
             min = value
+    # divide by the size of the matplotlib colormap, 256 4-tuple RGBA values
+    # can be altered to make the color changes more drastic
+    # map colors to a list of words
     delta = (max - min)/256
-    for key, value in tfidfDict.values():
-        if key not in color_to_words.keys():
-            idx = (value - min) // delta
-            color_to_words[key] = colors.to_hex(cm.viridis(idx))
+    for item in tfidfDict.items():
+        idx = (item[1] - min) // delta
+        hex_color = colors.to_hex(cm.viridis(idx))
+        if hex_color not in color_to_words.keys():
+            color_to_words[hex_color] = [item[0]]
+        elif item[0] not in color_to_words[hex_color]:
+            color_to_words[hex_color].append(item[0])
     wc = WordCloud(
         background_color='white',
         max_words = 100,
@@ -276,5 +282,9 @@ def main():
     # Apply our color function
     # wc.recolor(color_func=grouped_color_func)
     wc.recolor(color_func=grouped_color_func)
+
+    plt.axis('off')
+    plt.imshow(wc, interpolation='bilinear')
+    plt.show()
 
 main()

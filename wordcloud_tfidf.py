@@ -6,7 +6,8 @@ import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem.porter import PorterStemmer
-from wordcloud import WordCloud
+from wordcloud import WordCloud, get_single_color_func
+from matplotlib import cm
 import docx2txt as d2t
 from tqdm import tqdm
 
@@ -30,7 +31,22 @@ blacklist_words = [
 
 # tfidf dictionary declared globally so that it may be reached by the recolor method
 # which relies on it to color the words
-tfidfDict = {}
+#nevermind, using alternative method explained below
+
+# color_to_words will later have to be a dictionary of colors to list of words that will have those colors
+# as such, a gradient of colors has to be made, then mapped to words that fall within a range of tfidf values
+# so the colors will effectively be mapped to the tfidf values
+# example from website:
+'''
+color_to_words = {
+    # words below will be colord with a green single color function
+    '#00ff00': ['beautiful', 'explicit', 'simple', 'sparse', 'readability', 'rules', 'practicality',
+                'explicitly', 'one', 'now', 'easy', 'obvious', 'better']
+    # will be colored with a red single color function
+    'red': ['ugly', 'implicit', 'complex', 'complicated', 'nested', 'dense', 'special', 'errors',
+            'silently', 'ambiguity', 'guess', 'hard']
+}
+'''
 
 # TEST_SAMPLE is a dir that only contains a dir named CLEANED_2
 # CLEANED_2 only contains a dir named 14
@@ -49,9 +65,46 @@ original_corpus = []
 
 print("imported, inited, and now defining methods")
 
+'''
 # color function that changes colors of wordcloud depending on the tfidf of the word
 def my_tfidf_color_func(word, font_size, position, orientation, random_state=None, **kwargs):
     return 'hsl(%d, 80%%, 50%%)' % (360 * tfidfDict[word])
+'''
+
+# https://amueller.github.io/word_cloud/auto_examples/colored_by_group.html
+# creates color function object that assigns exact colors to words based on mapping
+class SimpleGroupedColorFunc(object):
+    def __init__(self, color_to_words, default_color):
+        self.word_to_color = {word: color
+                              for (color, words) in color_to_words.items()
+                              for word in words}
+        self.default_color = default_color
+
+    def __call__(self, word, **kwargs):
+        return self.word_to_color.get(word, self.default_color)
+
+# creates color function object which assigns different shades of specified colors to certain words based on mapping
+class GroupedColorFunc(object):
+    def __init__(self, color_to_words, default_color):
+        self.color_func_to_words = [
+            (get_single_color_func(color), set(words))
+            for (color, words) in color_to_words.items()
+        ]
+        self.default_color_func = get_single_color_func(default_color)
+    
+    # returns a single_color_func associated with the word
+    def get_color_func(self, word):
+        try:
+            color_func = next(
+                color_func for (color_func, words) in self.color_func_to_words
+                if word in words
+            )
+        except StopIteration:
+            color_func = self.default_color_func
+        return color_func
+    
+    def __call__(self, word, **kwargs):
+        return self.get_color_func(word)(word, **kwargs)
 
 # simple function that determines whether or not numbers exist in a string, causing it to return a boolean value
 def hasNumbers(inp):
@@ -168,8 +221,6 @@ def buildExtractTfInfo(filePath):
 # create wordcloud
 # recolor wordcloud <- current problem
 def main():
-    # use the dictionary that was declared globally to determine colors of words
-    global tfidfDict
     print("in main()")
     if not path.exists(wordCountFilePath):
         print("word count per file csv file NOT FOUND, building idf info")
@@ -181,6 +232,9 @@ def main():
     print("extracting idf info")
     idfDict = extractIdfInfo(wordCountFilePath, tfDict)
     print("calculating tfidf values")
+    tfidfDict = {}
+    default_color = 'grey'
+    color_to_words = {}
     for k in tfDict:
         tfidfDict[k] = tfDict[k] * idfDict[k]
     print("creating wordcloud")
@@ -194,6 +248,17 @@ def main():
     # color_func=lambda *args, **kwargs: (255,0,0) should work as a color function
     # it would make the wordcloud entirely red
 
+    '''
     wc.recolor(color_func=my_tfidf_color_func, random_state=3)
+    '''
+
+    # Create a color function with single tone
+    # grouped_color_func = SimpleGroupedColorFunc(color_to_words, default_color)
+
+    # Create a color function with multiple tones
+    # grouped_color_func = GroupedColorFunc(color_to_words, default_color)
+
+    # Apply our color function
+    # wc.recolor(color_func=grouped_color_func)
 
 main()

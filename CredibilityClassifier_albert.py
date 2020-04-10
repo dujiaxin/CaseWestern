@@ -221,7 +221,7 @@ def evaluate(args, model, bertModel, tokenizer, criterion):
         with torch.no_grad():  # When embedding the sentence use BERT, we don't train the model.
             for ii, sentence in enumerate(inputs, 2):
                 if len(sentence) < 3:
-                    print(sentence)
+                    # print(sentence)
                     continue
                 elif len(sentence) > args.sentence_max_length:
                     print(data['rms'])
@@ -294,7 +294,7 @@ def main():
                         help="epoch")
     parser.add_argument('--lstm_hidden_dim', type=int, default=768,
                         help="lstm_hidden_dim in classifier")
-    parser.add_argument("--embed_dim", type=int, default=4096, help="LM model hidden size")
+    parser.add_argument("--embed_dim", type=int, default=768, help="LM model hidden size")
     parser.add_argument('--sentence_max_length', type=int, default=512,
                         help="sentence_max_length")
     parser.add_argument('--overwrite_output_dir', action='store_true',
@@ -334,9 +334,9 @@ def main():
 
     # Load pre-trained model tokenizer (vocabulary)
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
-    tokenizer = tokenizer_class.from_pretrained('albert-xxlarge-v2', cache_dir=args.transformer_dir)
+    tokenizer = tokenizer_class.from_pretrained('albert-base-v2', cache_dir=args.transformer_dir)
     # Load pre-trained model (weights)
-    bertModel = model_class.from_pretrained('albert-xxlarge-v2', cache_dir=args.transformer_dir,
+    bertModel = model_class.from_pretrained('albert-base-v2', cache_dir=args.transformer_dir,
                                             output_hidden_states=True)
 
     # paragraph_encoder = torch.nn.gru()
